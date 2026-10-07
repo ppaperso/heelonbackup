@@ -1,0 +1,30 @@
+{
+  "smb": {
+    "url": "smb://192.168.1.100/backup/laptop",
+    "username": "your_username",
+    "workgroup": "WORKGROUP",
+    "timeout": 30,
+    "encrypt": true
+  },
+  "backup": {
+    "sources": ["/home/user"],
+    "excludes": [
+      ".cache",
+      ".thumbnails",
+      ".local/share/Trash",
+      "node_modules",
+      ".git",
+      "target",
+      "__pycache__",
+      "*.tmp"
+    ],
+    "max_file_size": 0,
+    "verify": true,
+    "workers": 4
+  },
+  "storage": {
+    "base_dir": "heelonbackup",
+    "retention": 5
+  },
+  "log_level": "warn"
+}

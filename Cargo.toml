@@ -1,0 +1,74 @@
+[package]
+name = "heelonbackup"
+version = "0.1.0"
+edition = "2024"
+authors = ["heelon"]
+description = "Reliable backup tool for Linux to Synology NAS (BeeStation) via SMB"
+rust-version = "1.87"
+license = "Apache-2.0"
+readme = "README.md"
+repository = "https://github.com/heelon/heelonbackup"
+homepage = "https://github.com/heelon/heelonbackup"
+documentation = "https://github.com/heelon/heelonbackup/blob/main/docs/user_guide.md"
+keywords = ["backup", "smb", "synology", "nas", "reliable"]
+categories = ["command-line-utilities", "filesystem", "backup"]
+
+[dependencies]
+# CLI
+clap = { version = "4.5", features = ["derive", "cargo", "wrap_help"] }
+clap_complete = "4.5"
+
+# Async runtime (smbclient sessions run as child processes)
+tokio = { version = "1.38", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "signal", "time"] }
+
+# Error handling
+anyhow = "1.0"
+thiserror = "2.0"
+
+# Serialization
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Time handling
+chrono = { version = "0.4", features = ["serde"] }
+
+# Paths
+dirs = "6.0"
+globset = "0.4"
+tempfile = "3.10"
+
+# Hashing
+sha2 = "0.10"
+hex = "0.4"
+
+# Logging
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+
+# Progress
+indicatif = "0.18"
+
+# Backup identifiers
+uuid = { version = "1.6", features = ["v4", "serde"] }
+
+# Interactive password prompt
+rpassword = "7.3"
+
+# statvfs / access / hostname
+nix = { version = "0.31", features = ["fs", "hostname"] }
+
+[profile.release]
+opt-level = 3
+lto = "fat"
+codegen-units = 1
+panic = "abort"
+strip = true
+
+[profile.release-with-debug]
+inherits = "release"
+debug = true
+strip = false
+
+[[bin]]
+name = "heelonbackup"
+path = "src/main.rs"

@@ -1,0 +1,38 @@
+# Language files
+*.rs linguist-language=Rust
+
+# Documentation
+*.md linguist-language=Markdown
+
+# Configuration
+*.json linguist-language=JSON
+*.toml linguist-language=TOML
+
+# License
+LICENSE linguist-generated=true
+
+# Ignore line endings for text files
+* text=auto
+
+# Normalize line endings to LF
+*.rs eol=lf
+*.md eol=lf
+*.json eol=lf
+*.toml eol=lf
+*.txt eol=lf
+
+# Merge drivers
+*.md merge=union
+*.json merge=union
+*.toml merge=union
+
+# Diff settings
+*.rs diff=rust
+*.toml diff=toml
+*.json diff=json
+
+# Export ignore for release builds
+target/release/heelonbackup export-ignore
+
+# Export substitute for version
+versionfiles=VERSION export-subst
