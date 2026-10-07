@@ -1,8 +1,12 @@
 # HeelonBackup
 
-[![Rust](https://img.shields.io/badge/rust-2024_edition-orange.svg)](https://www.rust-lang.org/)
+[![Rust 2024](https://img.shields.io/badge/rust-2024_edition-orange.svg)](https://www.rust-lang.org/)
 [![License: Apache-2.0](https://img.shields.io/badge/license-Apache_2.0-blue.svg)](LICENSE)
 [![Code of Conduct](https://img.shields.io/badge/contributor-covenant-v2.1-blue.svg)](CODE_OF_CONDUCT.md)
+[![GitHub release](https://img.shields.io/github/v/release/heelon/heelonbackup?display_name=tag)](https://github.com/heelon/heelonbackup/releases)
+[![CI/CD](https://github.com/heelon/heelonbackup/actions/workflows/ci.yml/badge.svg)](https://github.com/heelon/heelonbackup/actions/workflows/ci.yml)
+[![dependencies](https://img.shields.io/badge/dependencies-up%20to%20date-green)](https://github.com/heelon/heelonbackup/blob/main/Cargo.toml)
+[![Maintenance](https://img.shields.io/badge/maintenance-actively%20developed-brightgreen)](https://github.com/heelon/heelonbackup)
 
 **HeelonBackup** is an open-source, reliable, and optimized backup tool written in Rust for backing up Linux laptops (Fedora 44+) to Synology NAS (BeeStation) via SMB.
 
