@@ -15,7 +15,7 @@ jobs:
     name: Build and Test
     runs-on: ubuntu-latest
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v4.1.1
 
     - name: Install smbclient
       run: sudo apt-get update && sudo apt-get install -y smbclient
@@ -53,7 +53,7 @@ jobs:
     needs: build
     if: startsWith(github.ref, 'refs/tags/v')
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v4.1.1
 
     - name: Install smbclient
       run: sudo apt-get update && sudo apt-get install -y smbclient
