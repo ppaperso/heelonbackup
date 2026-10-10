@@ -1,5 +1,6 @@
 //! Backup manifest and local backup history
 
+use crate::config::Environment;
 use crate::error::{BackupError, Result};
 use chrono::{DateTime, Local};
 use serde::{Deserialize, Serialize};
@@ -245,18 +246,17 @@ impl BackupManifest {
     }
 }
 
-/// Summaries of the backups made from this computer (`~/.local/share/heelonbackup/history`)
+/// Summaries of the backups made from this computer
+/// (`~/.local/share/heelonbackup/history`, or `.heelonbackup/history` in development)
 pub struct LocalHistory {
     dir: PathBuf,
 }
 
 impl LocalHistory {
     pub fn open() -> Self {
-        let dir = dirs::data_local_dir()
-            .unwrap_or_else(|| PathBuf::from(".local/share"))
-            .join("heelonbackup")
-            .join("history");
-        Self { dir }
+        Self {
+            dir: Environment::detect().history_dir(),
+        }
     }
 
     #[cfg(test)]

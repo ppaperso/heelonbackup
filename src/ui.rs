@@ -1,7 +1,8 @@
 //! Terminal output helpers: progress bars, human-readable sizes and durations
 
+use crate::config::Environment;
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
-use std::io::{self, Write};
+use std::io::{self, IsTerminal, Write};
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -86,6 +87,19 @@ pub fn transfer_bar(total_bytes: u64, prefix: &str) -> ProgressBar {
 }
 
 pub const RULE: &str = "────────────────────────────────────────────────────────────";
+
+/// Warn on stderr when running in the development environment (silent in production)
+pub fn print_environment_banner() {
+    if Environment::detect() != Environment::Dev {
+        return;
+    }
+    let label = "DEV MODE - test configuration and dev_* folder on the NAS";
+    if io::stderr().is_terminal() && std::env::var_os("NO_COLOR").is_none() {
+        eprintln!("\x1b[1;31m⚠ {label}\x1b[0m");
+    } else {
+        eprintln!("[{label}]");
+    }
+}
 
 #[cfg(test)]
 mod tests {

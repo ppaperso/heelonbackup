@@ -121,6 +121,15 @@ Create the file `~/.config/heelonbackup/config.json`:
 |--------|-------------|--------|
 | `sources` | Source directories to backup | `["/home"]` |
 | `excludes` | Exclusion patterns (glob patterns) | `[]` |
+
+Folders containing a valid [`CACHEDIR.TAG`](https://bford.info/cachedir/) (Cargo `target/`, many caches) are always skipped,
+as are Python virtual environments (folders containing `pyvenv.cfg`, whatever their name): recreate them from the project requirements.
+Patterns without `/` match a name at any depth in **every** source; anchor project-only patterns
+on their folder, e.g. `/data/projects/**/dist`.
+For Firefox site caches, use an anchored pattern such as
+`/home/user/.config/mozilla/firefox/*/storage/default/*/cache`.
+Keep the rest of `storage`: it can contain site data, not just caches.
+Close Firefox before backing up its profile to avoid inconsistent databases.
 | `max_file_size` | Maximum file size (0 = unlimited) | `0` |
 | `workers` | Number of parallel workers | CPU count |
 
@@ -132,6 +141,9 @@ export HEELONBACKUP_SMB_PASSWORD="your_password"
 
 # Log level (debug, info, warn, error)
 export RUST_LOG=heelonbackup=debug
+
+# Development environment (set by the justfile): see Development below
+export HEELONBACKUP_ENV=dev
 ```
 
 ## 🎯 Commands
@@ -148,7 +160,7 @@ heelonbackup backup /home/user/Documents /home/user/Pictures
 # Backup with temporary exclusions
 heelonbackup backup --exclude "*.tmp" --exclude "*.log"
 
-# Dry run - shows what would be backed up
+# Dry run - shows what would be backed up (no NAS connection)
 heelonbackup backup --dry-run
 ```
 
@@ -359,6 +371,19 @@ git clone https://github.com/heelon/heelonbackup.git
 cd heelonbackup
 cargo build
 ```
+
+### Development environment
+
+With `HEELONBACKUP_ENV=dev` (exported by every `just` recipe), HeelonBackup keeps tests apart
+from production:
+
+| | Production (default) | Development |
+|---|---|---|
+| Configuration | `~/.config/heelonbackup/config.json` | `<project>/.heelonbackup/config.json` |
+| History | `~/.local/share/heelonbackup/history/` | `<project>/.heelonbackup/history/` |
+| `storage.base_dir` | must **not** start with `dev_` | must start with `dev_` |
+
+A red banner is printed on stderr in development. `.heelonbackup/` is ignored by git.
 
 ### Tests
 ```bash

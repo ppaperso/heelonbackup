@@ -126,12 +126,6 @@ pub async fn run(config: &Config, args: BackupArgs) -> Result<Exit> {
         });
     }
 
-    let client = common::connect(config).await?;
-    println!(
-        "🔌 Connected to {target} (encryption: {})",
-        on_off(config.smb.encrypt)
-    );
-
     if args.dry_run {
         if args.list {
             for file in &report.files {
@@ -147,6 +141,12 @@ pub async fn run(config: &Config, args: BackupArgs) -> Result<Exit> {
         println!("✅ Dry run OK: nothing was transferred.");
         return Ok(Exit::Success);
     }
+
+    let client = common::connect(config).await?;
+    println!(
+        "🔌 Connected to {target} (encryption: {})",
+        on_off(config.smb.encrypt)
+    );
 
     let backup_path = format!("{base}/{name}");
     let mut manifest = BackupManifest::new(

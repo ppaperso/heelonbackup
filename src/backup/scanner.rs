@@ -13,6 +13,25 @@ use tracing::debug;
 pub const UNSUPPORTED_NAME: &str =
     "name is not valid UTF-8 or contains a quote, backslash or control character";
 
+/// Header of a `CACHEDIR.TAG` file (https://bford.info/cachedir/), written by Cargo
+/// in `target/` and by other tools in their cache folders
+const CACHEDIR_TAG_SIGNATURE: &[u8] = b"Signature: 8a477f597d28d172789f06886806bc55";
+
+/// True if `dir` is marked as a cache folder that can be regenerated
+fn is_cache_dir(dir: &Path) -> bool {
+    use std::io::Read;
+    let mut header = [0u8; CACHEDIR_TAG_SIGNATURE.len()];
+    fs::File::open(dir.join("CACHEDIR.TAG"))
+        .and_then(|mut f| f.read_exact(&mut header))
+        .is_ok_and(|()| header == CACHEDIR_TAG_SIGNATURE)
+}
+
+/// True if `dir` is a Python virtual environment (PEP 405), which can be recreated
+/// from the project requirements, whatever its name
+fn is_python_venv(dir: &Path) -> bool {
+    dir.join("pyvenv.cfg").is_file()
+}
+
 /// A regular file selected for backup
 #[derive(Debug, Clone)]
 pub struct ScannedFile {
@@ -142,7 +161,11 @@ pub fn scan(
                 }
                 match entry.file_type() {
                     Ok(ft) if ft.is_dir() => {
-                        if key_of(&path).is_some() {
+                        if is_cache_dir(&path) {
+                            debug!("Excluded cache folder (CACHEDIR.TAG): {}", path.display());
+                        } else if is_python_venv(&path) {
+                            debug!("Excluded Python virtual environment: {}", path.display());
+                        } else if key_of(&path).is_some() {
                             stack.push(path);
                         } else {
                             report.skip(&path, UNSUPPORTED_NAME.to_string());
@@ -249,6 +272,28 @@ mod tests {
     }
 
     #[test]
+    fn firefox_site_cache_is_pruned_without_excluding_site_data() {
+        let dir = tempfile::tempdir().unwrap();
+        let root = dir.path();
+        let profile = root.join("firefox/profile");
+        let site = profile.join("storage/default/https+++example.com");
+        fs::create_dir_all(site.join("cache/morgue/101")).unwrap();
+        fs::create_dir_all(site.join("idb")).unwrap();
+        fs::write(site.join("cache/morgue/101/entry.final"), b"cache").unwrap();
+        fs::write(site.join("idb/data.sqlite"), b"site data").unwrap();
+        fs::write(profile.join("places.sqlite"), b"bookmarks").unwrap();
+        let pattern = format!("{}/firefox/*/storage/default/*/cache", root.display());
+        let ex = Excludes::new(&[pattern]).unwrap();
+        let report = scan(&[root.to_path_buf()], &ex, 0, &|_, _| {});
+
+        assert!(report.skipped.is_empty());
+        let paths: Vec<_> = report.files.iter().map(|file| &file.path).collect();
+        assert_eq!(paths.len(), 2);
+        assert!(paths.contains(&&site.join("idb/data.sqlite")));
+        assert!(paths.contains(&&profile.join("places.sqlite")));
+    }
+
+    #[test]
     fn invalid_pattern_is_reported() {
         assert!(Excludes::new(&["a[".to_string()]).is_err());
     }
@@ -258,6 +303,16 @@ mod tests {
         let dir = tempfile::tempdir().unwrap();
         let root = dir.path();
         fs::create_dir_all(root.join("a/node_modules")).unwrap();
+        fs::create_dir_all(root.join("a/target/debug")).unwrap();
+        fs::write(
+            root.join("a/target/CACHEDIR.TAG"),
+            [CACHEDIR_TAG_SIGNATURE, b"\n# cargo"].concat(),
+        )
+        .unwrap();
+        fs::write(root.join("a/target/debug/app"), b"bin").unwrap();
+        fs::create_dir_all(root.join("a/myenv42/lib")).unwrap();
+        fs::write(root.join("a/myenv42/pyvenv.cfg"), b"home = /usr/bin").unwrap();
+        fs::write(root.join("a/myenv42/lib/site.py"), b"py").unwrap();
         fs::write(root.join("a/one.txt"), b"1").unwrap();
         fs::write(root.join("a/node_modules/x.js"), b"x").unwrap();
         fs::write(root.join("two.txt"), b"22").unwrap();

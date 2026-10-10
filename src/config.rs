@@ -8,6 +8,81 @@ use std::io::{IsTerminal, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
 
+/// Environment variable that selects the development environment (`dev`)
+pub const ENV_VAR: &str = "HEELONBACKUP_ENV";
+
+/// Prefix required for `storage.base_dir` in the development environment
+pub const DEV_BASE_DIR_PREFIX: &str = "dev_";
+
+/// Development or production environment, kept apart so tests never touch real backups
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Environment {
+    /// `HEELONBACKUP_ENV=dev` (set by the justfile): config and history in the project
+    Dev,
+    /// Default: config in `~/.config`, history in `~/.local/share`
+    Prod,
+}
+
+impl Environment {
+    /// Current environment, from `HEELONBACKUP_ENV`
+    pub fn detect() -> Self {
+        match std::env::var(ENV_VAR).as_deref() {
+            Ok("dev") => Self::Dev,
+            _ => Self::Prod,
+        }
+    }
+
+    /// Local folder holding the configuration (and, in dev, the history)
+    fn config_dir(self) -> PathBuf {
+        match self {
+            // Anchored on the project, whatever the current directory
+            Self::Dev => Path::new(env!("CARGO_MANIFEST_DIR")).join(".heelonbackup"),
+            Self::Prod => dirs::config_dir()
+                .unwrap_or_else(|| PathBuf::from(".config"))
+                .join("heelonbackup"),
+        }
+    }
+
+    pub fn config_path(self) -> PathBuf {
+        self.config_dir().join("config.json")
+    }
+
+    pub fn history_dir(self) -> PathBuf {
+        match self {
+            Self::Dev => self.config_dir().join("history"),
+            Self::Prod => dirs::data_local_dir()
+                .unwrap_or_else(|| PathBuf::from(".local/share"))
+                .join("heelonbackup")
+                .join("history"),
+        }
+    }
+
+    fn default_base_dir(self) -> String {
+        match self {
+            Self::Dev => format!("{DEV_BASE_DIR_PREFIX}heelonbackup"),
+            Self::Prod => "heelonbackup".to_string(),
+        }
+    }
+
+    /// Dev backups must go to a `dev_*` folder on the NAS, and production backups must not
+    pub fn check_base_dir(self, base_dir: &str) -> Result<(), ConfigError> {
+        let is_dev_dir = base_dir
+            .trim_start_matches('/')
+            .starts_with(DEV_BASE_DIR_PREFIX);
+        match (self, is_dev_dir) {
+            (Self::Dev, false) => Err(ConfigError::Invalid(format!(
+                "storage.base_dir `{base_dir}` must start with `{DEV_BASE_DIR_PREFIX}` in the \
+                 development environment ({ENV_VAR}=dev), to keep tests apart from real backups"
+            ))),
+            (Self::Prod, true) => Err(ConfigError::Invalid(format!(
+                "storage.base_dir `{base_dir}` is a development folder; production backups \
+                 must not start with `{DEV_BASE_DIR_PREFIX}`"
+            ))),
+            _ => Ok(()),
+        }
+    }
+}
+
 /// Environment variable that overrides the SMB password from the configuration
 pub const PASSWORD_ENV: &str = "HEELONBACKUP_SMB_PASSWORD";
 
@@ -112,7 +187,7 @@ fn default_workers() -> usize {
 }
 
 fn default_base_dir() -> String {
-    "heelonbackup".to_string()
+    Environment::detect().default_base_dir()
 }
 
 fn default_retention() -> usize {
@@ -243,12 +318,9 @@ pub fn is_safe_component(s: &str) -> bool {
 }
 
 impl Config {
-    /// Default configuration file path (~/.config/heelonbackup/config.json)
+    /// Default configuration file path for the current environment
     pub fn default_path() -> PathBuf {
-        dirs::config_dir()
-            .unwrap_or_else(|| PathBuf::from(".config"))
-            .join("heelonbackup")
-            .join("config.json")
+        Environment::detect().config_path()
     }
 
     /// Load and validate the configuration
@@ -269,6 +341,7 @@ impl Config {
                 source,
             })?;
         config.validate()?;
+        Environment::detect().check_base_dir(&config.storage.base_dir)?;
         Ok(config)
     }
 
@@ -442,6 +515,29 @@ mod tests {
         let config: Config = serde_json::from_str(json).unwrap();
         assert!(config.validate().is_ok());
         assert!(config.smb.encrypt);
+    }
+
+    #[test]
+    fn base_dir_matches_environment() {
+        assert!(Environment::Dev.check_base_dir("dev_heelonbackup").is_ok());
+        assert!(
+            Environment::Dev
+                .check_base_dir("/dev_heelonbackup/")
+                .is_ok()
+        );
+        assert!(Environment::Dev.check_base_dir("heelonbackup").is_err());
+        assert!(Environment::Dev.check_base_dir("backups/dev_x").is_err());
+        assert!(Environment::Prod.check_base_dir("heelonbackup").is_ok());
+        assert!(Environment::Prod.check_base_dir("backup_devices").is_ok());
+        assert!(
+            Environment::Prod
+                .check_base_dir("dev_heelonbackup")
+                .is_err()
+        );
+        assert_eq!(
+            Environment::Dev.history_dir().parent(),
+            Some(Environment::Dev.config_path().parent().unwrap())
+        );
     }
 
     #[test]

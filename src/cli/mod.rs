@@ -23,7 +23,7 @@ pub struct Cli {
     #[arg(short, long, global = true)]
     pub verbose: bool,
 
-    /// Configuration file [default: ~/.config/heelonbackup/config.json]
+    /// Configuration file [default: ~/.config/heelonbackup/config.json, or .heelonbackup/config.json with HEELONBACKUP_ENV=dev]
     #[arg(short, long, global = true, value_name = "PATH")]
     pub config: Option<PathBuf>,
 
@@ -94,6 +94,7 @@ pub async fn run() -> ExitCode {
     let cli = Cli::parse();
     let config_path = cli.config.clone().unwrap_or_else(Config::default_path);
     let verbose = cli.verbose;
+    ui::print_environment_banner();
 
     let result = match cli.command {
         Commands::Backup(args) => match common::load_config(&config_path, verbose) {
