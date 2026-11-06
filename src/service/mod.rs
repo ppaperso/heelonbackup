@@ -6,6 +6,7 @@
 //! display will be passed as a parameter of the `run()` functions so the
 //! console can render its own output.
 
+pub(crate) mod backup;
 pub(crate) mod remote;
 
 use std::path::PathBuf;
