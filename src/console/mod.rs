@@ -11,6 +11,7 @@ mod config;
 mod restore;
 mod status;
 mod strings;
+mod validate;
 mod verify;
 
 pub(crate) use strings::{Lang, Strings};
@@ -18,6 +19,7 @@ pub(crate) use strings::{Lang, Strings};
 use crate::config::Config;
 use crate::error::{BackupError, Result};
 use crate::service::Exit;
+use dialoguer::Input;
 use dialoguer::Select;
 use dialoguer::theme::ColorfulTheme;
 use std::io::{ErrorKind, IsTerminal};
@@ -80,6 +82,35 @@ pub(crate) async fn select(prompt: &str, items: &[&str], default: usize) -> Resu
             .items(&items)
             .default(default)
             .interact_opt()
+    })
+    .await
+}
+
+/// Yes/No question, rendered as a two-item select so it follows the active language
+pub(crate) async fn confirm(
+    prompt: &str,
+    yes: &str,
+    no: &str,
+    default_yes: bool,
+) -> Result<Option<bool>> {
+    let index = select(prompt, &[yes, no], usize::from(!default_yes)).await?;
+    Ok(index.map(|i| i == 0))
+}
+
+/// Free-text input (empty allowed). dialoguer's Input has no Esc-cancel;
+/// Ctrl-C still interrupts cleanly via `interact_opt`.
+pub(crate) async fn input(prompt: &str, default: Option<&str>) -> Result<Option<String>> {
+    let prompt = prompt.to_string();
+    let default = default.map(str::to_string);
+    interact_opt(move || {
+        let theme = ColorfulTheme::default();
+        let mut field = Input::<String>::with_theme(&theme)
+            .with_prompt(prompt)
+            .allow_empty(true);
+        if let Some(default) = default {
+            field = field.default(default);
+        }
+        field.interact_text().map(Some)
     })
     .await
 }

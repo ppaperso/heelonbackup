@@ -61,6 +61,14 @@ pub(crate) struct Strings {
     pub status_options: [&'static str; 3],
     pub config_prompt: &'static str,
     pub config_options: [&'static str; 3],
+    pub yes: &'static str,
+    pub no: &'static str,
+    pub backup_source_prompt: &'static str,
+    pub backup_source_options: [&'static str; 2],
+    pub backup_paths_prompt: &'static str,
+    pub backup_list_prompt: &'static str,
+    pub backup_dryrun_prompt: &'static str,
+    pub backup_run_prompt: &'static str,
 }
 
 pub(crate) static EN: Strings = Strings {
@@ -86,6 +94,14 @@ pub(crate) static EN: Strings = Strings {
         "Configuration file path",
         "Open in $EDITOR",
     ],
+    yes: "Yes",
+    no: "No",
+    backup_source_prompt: "What to back up?",
+    backup_source_options: ["Configured sources", "Specific files/folders"],
+    backup_paths_prompt: "Paths to back up (comma separated, empty = configured sources)",
+    backup_list_prompt: "List every file in the dry run?",
+    backup_dryrun_prompt: "Run a dry run first (recommended)?",
+    backup_run_prompt: "Start the real backup now?",
 };
 
 pub(crate) static FR: Strings = Strings {
@@ -111,6 +127,14 @@ pub(crate) static FR: Strings = Strings {
         "Chemin du fichier de configuration",
         "Ouvrir dans $EDITOR",
     ],
+    yes: "Oui",
+    no: "Non",
+    backup_source_prompt: "Que sauvegarder ?",
+    backup_source_options: ["Sources configurées", "Fichiers/dossiers précis"],
+    backup_paths_prompt: "Chemins à sauvegarder (séparés par des virgules, vide = sources configurées)",
+    backup_list_prompt: "Lister tous les fichiers dans le dry-run ?",
+    backup_dryrun_prompt: "Faire d'abord un dry-run (recommandé) ?",
+    backup_run_prompt: "Lancer le vrai backup maintenant ?",
 };
 
 #[cfg(test)]
@@ -134,6 +158,8 @@ mod tests {
             assert!(!s.stub.is_empty());
             assert_eq!(s.status_options.len(), 3);
             assert_eq!(s.config_options.len(), 3);
+            assert_eq!(s.backup_source_options.len(), 2);
+            assert_ne!(s.yes, s.no);
         }
         assert_ne!(Lang::En.strings().menu_quit, Lang::Fr.strings().menu_quit);
         assert_ne!(
