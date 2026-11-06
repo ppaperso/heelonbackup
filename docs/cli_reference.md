@@ -47,23 +47,24 @@ Backup the configured sources, or the given files/folders, to the NAS.
 ### Usage
 
 ```bash
-heelonbackup backup [OPTIONS] [SOURCES]...
+heelonbackup backup [OPTIONS] [PATHS]...
 ```
 
 ### Arguments
 
 | Argument | Type | Description |
 |----------|------|-------------|
-| `SOURCES` | PATH | Directories or files to back up. If not provided, uses configured sources. |
+| `PATHS` | PATH | Files or folders to back up instead of the configured sources (repeatable). If omitted, uses `backup.sources` from the configuration. |
 
 ### Options
 
 | Option | Short | Type | Description | Default |
 |--------|-------|------|-------------|---------|
-| `--exclude` | `-e` | PATTERN | Exclude pattern (glob syntax). Can be specified multiple times. | N/A |
-| `--dry-run` | `-n` | flag | Show what would be backed up without actually transferring. | false |
-| `--workers` | `-w` | NUMBER | Number of parallel workers. Overrides config. | CPU count |
-| `--max-file-size` | | SIZE | Maximum file size in bytes. Overrides config. | 0 (unlimited) |
+| `--dry-run` | `-n` | flag | Scan and check the connection, but transfer nothing | false |
+| `--list` | `-l` | flag | With `--dry-run`: print every file that would be backed up | false |
+| `--exclude` | `-e` | PATTERN | Extra exclude pattern (glob), **appended** to `backup.excludes` (repeatable) | N/A |
+| `--workers` | `-w` | NUMBER | Parallel SMB sessions for this backup; overrides `backup.workers` (1-16) | CPU count (clamped 1-4) |
+| `--max-file-size` | | SIZE | Maximum file size in bytes for this backup; overrides `backup.max_file_size` | 0 (unlimited) |
 
 ### Examples
 
@@ -312,8 +313,9 @@ heelonbackup config [OPTIONS] [ACTION]
 
 | Action | Description |
 |--------|-------------|
-| `init` | Create default configuration if it doesn't exist |
+| `init` | Create default configuration if it doesn't exist (`--force` to replace an existing one) |
 | `edit` | Edit the configuration file with default editor |
+| `path` | Print the path of the configuration file |
 | `check` | Validate the configuration file and resolve the configured sources (they must exist on disk); prints a summary and a final verdict. Exit 0 (`✅`) when valid, 1 with the error otherwise. No network access — use `list` to test the NAS connection |
 | `show` | Show the current configuration |
 
