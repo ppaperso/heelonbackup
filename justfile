@@ -12,9 +12,9 @@ build:
 build-release:
     cargo build --release
 
-# Run the application
+# Run the application (without arguments: opens the interactive console)
 run *args:
-    cargo run -- @args
+    cargo run -- {{args}}
 
 # Configuration commands
 config-init:
