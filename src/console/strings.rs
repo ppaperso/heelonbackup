@@ -57,6 +57,8 @@ pub(crate) struct Strings {
     pub menu_quit: &'static str,
     pub language_saved: &'static str,
     pub stub: &'static str,
+    pub status_prompt: &'static str,
+    pub status_options: [&'static str; 3],
 }
 
 pub(crate) static EN: Strings = Strings {
@@ -70,6 +72,12 @@ pub(crate) static EN: Strings = Strings {
     menu_quit: "Quit",
     language_saved: "Language switched to English (saved in the configuration file).",
     stub: "This flow is not implemented yet (phase 3).",
+    status_prompt: "What do you want to see?",
+    status_options: [
+        "Last backup summary",
+        "Last backup (detailed)",
+        "Full history",
+    ],
 };
 
 pub(crate) static FR: Strings = Strings {
@@ -83,6 +91,12 @@ pub(crate) static FR: Strings = Strings {
     menu_quit: "Quitter",
     language_saved: "Langue changée : français (enregistrée dans le fichier de configuration).",
     stub: "Ce flux sera implémenté en phase 3.",
+    status_prompt: "Que voulez-vous voir ?",
+    status_options: [
+        "Résumé du dernier backup",
+        "Dernier backup (détaillé)",
+        "Historique complet",
+    ],
 };
 
 #[cfg(test)]
@@ -104,6 +118,7 @@ mod tests {
         for s in [Lang::En.strings(), Lang::Fr.strings()] {
             assert!(!s.menu_prompt.is_empty());
             assert!(!s.stub.is_empty());
+            assert_eq!(s.status_options.len(), 3);
         }
         assert_ne!(Lang::En.strings().menu_quit, Lang::Fr.strings().menu_quit);
         assert_ne!(

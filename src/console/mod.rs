@@ -118,28 +118,27 @@ pub(crate) async fn run(config_path: &Path) -> Result<Exit> {
             // Esc / q / Ctrl-C at the main menu: clean quit
             return Ok(Exit::Success);
         };
-        match action_at(index) {
-            Action::Backup => {
-                backup::run(s, config_path).await?;
-            }
-            Action::Status => {
-                status::run(s, config_path).await?;
-            }
-            Action::Verify => {
-                verify::run(s, config_path).await?;
-            }
-            Action::Restore => {
-                restore::run(s, config_path).await?;
-            }
-            Action::Config => {
-                config::run(s, config_path).await?;
-            }
+        let flow = match action_at(index) {
+            Action::Backup => backup::run(s, config_path).await,
+            Action::Status => status::run(s, config_path).await,
+            Action::Verify => verify::run(s, config_path).await,
+            Action::Restore => restore::run(s, config_path).await,
+            Action::Config => config::run(s, config_path).await,
             Action::Language => {
                 lang = lang.toggle();
                 persist_language(config_path, lang)?;
                 println!("{}", lang.strings().language_saved);
+                continue;
             }
             Action::Quit => return Ok(Exit::Success),
+        };
+        match flow {
+            // an interrupted transfer keeps the CLI semantics (exit 130)
+            Ok(Exit::Interrupted) => return Ok(Exit::Interrupted),
+            Ok(_) => {}
+            Err(BackupError::Interrupted) => return Err(BackupError::Interrupted),
+            // any other flow error is shown, then the menu comes back
+            Err(e) => eprintln!("❌ Error: {e}"),
         }
     }
 }
