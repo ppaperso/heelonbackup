@@ -20,9 +20,9 @@ HeelonBackup provides multiple ways to configure your SMB connection securely. *
    nano .env
    ```
 
-3. For your NAS at **192.168.1.22**, add:
+3. For your NAS at **192.168.1.100**, add:
    ```bash
-   HEELONBACKUP_SMB_URL=smb://192.168.1.22/backup
+   HEELONBACKUP_SMB_URL=smb://192.168.1.100/backup
    HEELONBACKUP_SMB_USERNAME=your_username
    HEELONBACKUP_SMB_PASSWORD=your_secure_password
    HEELONBACKUP_SMB_WORKGROUP=WORKGROUP
@@ -60,7 +60,7 @@ nano ~/.config/heelonbackup/secrets.json
 ```json
 {
   "smb": {
-    "url": "smb://192.168.1.22/backup",
+    "url": "smb://192.168.1.100/backup",
     "username": "your_username",
     "password": "your_secure_password",
     "workgroup": "WORKGROUP",
@@ -108,7 +108,7 @@ Keep public configuration in `config.json` and secrets in `.env`:
 
 ### 2. Secrets in `.env`
 ```bash
-HEELONBACKUP_SMB_URL=smb://192.168.1.22/backup
+HEELONBACKUP_SMB_URL=smb://192.168.1.100/backup
 HEELONBACKUP_SMB_USERNAME=your_username
 HEELONBACKUP_SMB_PASSWORD=your_secure_password
 HEELONBACKUP_SMB_WORKGROUP=WORKGROUP
@@ -153,10 +153,10 @@ chmod 700 ~/.config/heelonbackup/
 ### Test SMB connection manually
 ```bash
 # Using smbclient directly
-smbclient //192.168.1.22/backup -U your_username
+smbclient //192.168.1.100/backup -U your_username
 
 # With password from environment
-PASSWD=your_password smbclient //192.168.1.22/backup -U your_username -c "ls"
+PASSWD=your_password smbclient //192.168.1.100/backup -U your_username -c "ls"
 ```
 
 ### Test HeelonBackup connection
@@ -171,7 +171,7 @@ heelonbackup --config ~/.config/heelonbackup/secrets.json config check
 
 ---
 
-## 📝 Example: Full Setup for Your NAS (192.168.1.22)
+## 📝 Example: Full Setup for Your NAS (192.168.1.100)
 
 ### Step 1: Create .env file
 ```bash
@@ -185,8 +185,8 @@ nano .env
 
 Add:
 ```bash
-# NAS at 192.168.1.22
-HEELONBACKUP_SMB_URL=smb://192.168.1.22/backup
+# NAS at 192.168.1.100
+HEELONBACKUP_SMB_URL=smb://192.168.1.100/backup
 HEELONBACKUP_SMB_USERNAME=your_backup_user
 HEELONBACKUP_SMB_PASSWORD=your_secure_password
 HEELONBACKUP_SMB_WORKGROUP=WORKGROUP
