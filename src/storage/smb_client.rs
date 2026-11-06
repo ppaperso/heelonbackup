@@ -500,7 +500,7 @@ mod tests {
         assert!(matches!(session_error(&auth), Err(BackupError::SmbAuth(_))));
         let conn = ScriptOutput {
             stderr:
-                "do_connect: Connection to 10.0.0.9 failed (Error NT_STATUS_CONNECTION_REFUSED)\n"
+                "do_connect: Connection to 192.168.1.100 failed (Error NT_STATUS_CONNECTION_REFUSED)\n"
                     .into(),
             ..Default::default()
         };

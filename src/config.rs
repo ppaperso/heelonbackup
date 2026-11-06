@@ -501,12 +501,12 @@ mod tests {
 
     #[test]
     fn parse_smb_url() {
-        let t = SmbTarget::parse("smb://192.168.1.10/backup").unwrap();
-        assert_eq!(t.host, "192.168.1.10");
+        let t = SmbTarget::parse("smb://192.168.1.100/backup").unwrap();
+        assert_eq!(t.host, "192.168.1.100");
         assert_eq!(t.port, None);
         assert_eq!(t.share, "backup");
         assert!(t.folder.is_empty());
-        assert_eq!(t.service(), "//192.168.1.10/backup");
+        assert_eq!(t.service(), "//192.168.1.100/backup");
 
         let t = SmbTarget::parse("smb://nas.local:4450/home/laptop/").unwrap();
         assert_eq!(t.port, Some(4450));
