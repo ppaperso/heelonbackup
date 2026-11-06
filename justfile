@@ -30,8 +30,8 @@ config-show:
     cargo run -- config show
 
 # Test commands
-test:
-    cargo test
+test *args:
+    cargo test {{args}}
 
 test-scanner:
     cargo test scanner
@@ -42,9 +42,23 @@ test-hasher:
 test-transfer:
     cargo test transfer
 
+# Read-only diagnostic; the caller supplies a mounted share or a synthetic folder.
+scan-cles-nas mount:
+    bash scripts/scan-cles-nas.sh {{quote(mount)}}
+
+# Never accesses the NAS or real SSH keys.
+test-scan-cles-nas:
+    bash -n scripts/scan-cles-nas.sh
+    shellcheck scripts/scan-cles-nas.sh
+    python3.15 -W default scripts/test_scan_cles_nas.py
+
 # Quality checks
 clippy:
     cargo clippy
+
+# Match the stricter CI check while keeping the development environment.
+clippy-ci:
+    cargo clippy --all-targets --all-features -- -D warnings
 
 fmt:
     cargo fmt --check

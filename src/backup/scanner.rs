@@ -61,6 +61,7 @@ pub struct ScanReport {
 pub struct Excludes {
     names: GlobSet,
     paths: GlobSet,
+    protected: Vec<PathBuf>,
 }
 
 impl Excludes {
@@ -97,12 +98,20 @@ impl Excludes {
         Ok(Self {
             names: build(names)?,
             paths: build(paths)?,
+            protected: Vec::new(),
         })
     }
 
+    /// Exclude literal paths and their descendants, even if their names contain glob syntax.
+    pub(crate) fn protect(&mut self, paths: impl IntoIterator<Item = PathBuf>) {
+        self.protected.extend(paths);
+    }
+
     pub fn is_excluded(&self, path: &Path) -> bool {
-        path.file_name()
-            .is_some_and(|name| self.names.is_match(name))
+        self.protected.iter().any(|root| path.starts_with(root))
+            || path
+                .file_name()
+                .is_some_and(|name| self.names.is_match(name))
             || self.paths.is_match(path)
     }
 }
@@ -125,6 +134,13 @@ pub fn scan(
     let mut report = ScanReport::default();
 
     for source in sources {
+        if excludes
+            .protected
+            .iter()
+            .any(|root| source.starts_with(root))
+        {
+            continue;
+        }
         let meta = match fs::symlink_metadata(source) {
             Ok(meta) => meta,
             Err(e) => {
@@ -269,6 +285,30 @@ mod tests {
         assert!(!ex.is_excluded(Path::new("/home/u/.cache-not")));
         assert!(!ex.is_excluded(Path::new("/home/u/targets.txt")));
         assert!(!ex.is_excluded(Path::new("/home/u/share/Trash")));
+    }
+
+    #[test]
+    fn protected_literal_paths_are_excluded_from_parent_and_explicit_sources() {
+        let dir = tempfile::tempdir().unwrap();
+        let protected = dir.path().join("keys[1]");
+        fs::create_dir_all(&protected).unwrap();
+        fs::write(protected.join("private"), b"secret").unwrap();
+        fs::write(dir.path().join("ordinary"), b"data").unwrap();
+        let mut ex = excludes(&[]);
+        ex.protect([protected.clone()]);
+        let report = scan(
+            &[
+                dir.path().to_path_buf(),
+                protected.clone(),
+                protected.join("private"),
+            ],
+            &ex,
+            0,
+            &|_, _| {},
+        );
+        assert_eq!(report.files.len(), 1);
+        assert_eq!(report.files[0].path, dir.path().join("ordinary"));
+        assert!(report.skipped.is_empty());
     }
 
     #[test]

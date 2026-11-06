@@ -20,6 +20,8 @@ pub enum Action {
     Edit,
     /// Validate the configuration file and resolve the configured sources (no network access)
     Check,
+    /// List the configured sources (found on disk or missing) and the exclude patterns
+    Sources,
     /// Print the path of the configuration file
     Path,
 }
@@ -35,6 +37,7 @@ pub fn run(path: &Path, action: Option<Action>) -> Result<Exit> {
         Action::Show => show(path),
         Action::Edit => edit(path),
         Action::Check => check(path),
+        Action::Sources => sources(path),
         Action::Path => {
             print_config_path(path);
             Ok(Exit::Success)
@@ -47,7 +50,21 @@ pub fn run(path: &Path, action: Option<Action>) -> Result<Exit> {
 fn check(path: &Path) -> Result<Exit> {
     let config = Config::load(path)?; // parse + validate + environment base_dir check
     Excludes::new(&config.backup.excludes)?; // exclude patterns must compile
+    let sealed = config
+        .sealed
+        .as_ref()
+        .map(super::seal::Plan::new)
+        .transpose()?;
     let (found, missing) = resolve_sources(&config);
+    let missing: Vec<_> = missing
+        .into_iter()
+        .filter(|source| {
+            sealed
+                .as_ref()
+                .and_then(|plan| plan.pending_source(&expand_tilde(source)))
+                .is_none()
+        })
+        .collect();
     let target = SmbTarget::parse(&config.smb.url)?;
     print_check_summary(path, &config, &target, &found);
     if missing.is_empty() {
@@ -57,6 +74,72 @@ fn check(path: &Path) -> Result<Exit> {
         print_check_missing(&missing);
         Ok(Exit::Failure)
     }
+}
+
+/// List the configured sources: success when they all exist, warnings otherwise
+fn sources(path: &Path) -> Result<Exit> {
+    let config = Config::load(path)?;
+    Ok(if print_sources(&config, true) {
+        Exit::Success
+    } else {
+        Exit::Warnings
+    })
+}
+
+/// Print every configured source (✓ found on disk, ✗ missing) and the exclude
+/// patterns (or only their count, so a long exclude list does not hide the
+/// sources); returns true when all the sources exist. Shared with the console
+/// backup flow, so the user sees what "configured sources" means before choosing.
+pub(crate) fn print_sources(config: &Config, list_excludes: bool) -> bool {
+    let sources = &config.backup.sources;
+    ui::say!("📁 Configured sources ({})", sources.len());
+    let mut all_found = true;
+    for source in sources {
+        match expand_tilde(source).canonicalize() {
+            Ok(p) if p.as_os_str() == source.as_str() => ui::say!("    ✓ {source}"),
+            Ok(p) => ui::say!("    ✓ {source}  →  {}", p.display()),
+            Err(_)
+                if config
+                    .sealed
+                    .as_ref()
+                    .is_some_and(|sealed| source == &sealed.staging_dir) =>
+            {
+                ui::say!("    ✓ {source}  (created automatically by seal)");
+            }
+            Err(_) => {
+                all_found = false;
+                ui::say!("    ✗ {source}  (not found: it will be skipped)");
+            }
+        }
+    }
+    if let Some(sealed) = &config.sealed {
+        ui::say!("Encrypted archives are included automatically in full backups:");
+        for item in &sealed.items {
+            ui::say!(
+                "    {} -> {}/{} (never transferred as plaintext)",
+                item.path,
+                sealed.staging_dir,
+                item.archive
+            );
+        }
+    }
+    if sources.is_empty() {
+        all_found = false;
+        ui::say!("    (none: set backup.sources in the configuration)");
+    }
+    let excludes = &config.backup.excludes;
+    if list_excludes {
+        ui::say!("🚫 Exclude patterns ({})", excludes.len());
+        for pattern in excludes {
+            ui::say!("    • {pattern}");
+        }
+    } else {
+        ui::say!(
+            "🚫 {} exclude pattern(s) apply (list: `heelonbackup config sources`)",
+            excludes.len()
+        );
+    }
+    all_found
 }
 
 /// Resolve the configured backup sources: (existing canonical paths, missing source strings)
@@ -75,7 +158,7 @@ fn resolve_sources(config: &Config) -> (Vec<PathBuf>, Vec<String>) {
 }
 
 /// Read one line from stdin, `default` when empty
-// TODO(console): in the console flow the questions go through dialoguer instead
+// CLI only (`config init`): the console never asks questions on stdin
 fn ask(question: &str, default: &str) -> Result<String> {
     print!("{question} [{default}]: ");
     std::io::stdout().flush().ok();
@@ -179,90 +262,80 @@ fn edit(path: &Path) -> Result<Exit> {
 }
 
 // ---- Display ----
-// TODO(console): all the printing of this module is grouped in the small
-// functions below. In phase 3 the display will be passed as a parameter of
-// run() so the console can render its own output; until then they keep the
-// exact CLI output.
+// Every line goes through `ui::say!`: printed as-is by the CLI, shown in the
+// terminal pane by the console.
 
-// TODO(console)
 fn print_config_path(path: &Path) {
-    println!("{}", path.display());
+    ui::say!("{}", path.display());
 }
 
-// TODO(console)
 fn print_creating(path: &Path) {
-    println!("Creating {}", path.display());
+    ui::say!("Creating {}", path.display());
 }
 
-// TODO(console)
 fn print_url_error(e: &ConfigError) {
-    println!("  {e}");
+    ui::say!("  {e}");
 }
 
-// TODO(console)
 fn print_config_written(path: &Path) {
-    println!("✅ Configuration written to {} (mode 600)", path.display());
-    println!(
+    ui::say!("✅ Configuration written to {} (mode 600)", path.display());
+    ui::say!(
         "   The password is not stored: it is asked at each run, or read from {PASSWORD_ENV}."
     );
-    println!("   Next: `heelonbackup backup --dry-run` to check the setup.");
+    ui::say!("   Next: `heelonbackup backup --dry-run` to check the setup.");
 }
 
 /// The configuration file content (password masked), with an optional permissions warning
-// TODO(console)
 fn print_config(path: &Path, json: &str, warning: Option<&str>) {
-    println!("# {}", path.display());
-    println!("{json}");
+    ui::say!("# {}", path.display());
+    ui::say!("{json}");
     if let Some(warning) = warning {
-        println!("⚠️  {warning}");
+        ui::say!("⚠️  {warning}");
     }
 }
 
-// TODO(console)
 fn print_config_valid() {
-    println!("✅ Configuration is valid");
+    ui::say!("✅ Configuration is valid");
 }
 
-// TODO(console)
 fn print_config_invalid(e: &ConfigError) {
-    println!("❌ {e}");
+    ui::say!("❌ {e}");
     if let Some(source) = std::error::Error::source(e) {
-        println!("   {source}");
+        ui::say!("   {source}");
     }
 }
 
 /// Summary of a `config check`: file, SMB target, sources, tuning
-// TODO(console)
 fn print_check_summary(path: &Path, config: &Config, target: &SmbTarget, found: &[PathBuf]) {
-    println!("# {}", path.display());
-    println!(
+    ui::say!("# {}", path.display());
+    ui::say!(
         "  smb.url:       {} (service {})",
         config.smb.url,
         target.service()
     );
-    println!("  smb.username:  {}", config.smb.username);
-    println!(
+    ui::say!("  smb.username:  {}", config.smb.username);
+    ui::say!(
         "  encryption:    {}",
         if config.smb.encrypt { "on" } else { "off" }
     );
-    println!(
+    ui::say!(
         "  remote base:   {}",
         config.remote_base().unwrap_or_else(|_| "-".into())
     );
-    println!(
+    ui::say!(
         "  sources:       {} configured, {} found on disk",
         config.backup.sources.len(),
         found.len()
     );
     for p in found {
-        println!("    ✓ {}", p.display());
+        ui::say!("    ✓ {}", p.display());
     }
-    println!(
+    ui::say!(
         "  excludes:      {} pattern(s)",
         config.backup.excludes.len()
     );
-    println!("  workers:       {}", config.backup.workers);
-    println!(
+    ui::say!("  workers:       {}", config.backup.workers);
+    ui::say!(
         "  max_file_size: {}",
         if config.backup.max_file_size == 0 {
             "unlimited".to_string()
@@ -270,27 +343,25 @@ fn print_check_summary(path: &Path, config: &Config, target: &SmbTarget, found: 
             ui::bytes(config.backup.max_file_size)
         }
     );
-    println!(
+    ui::say!(
         "  retention:     {}",
         match config.storage.retention {
             0 => "keep all".to_string(),
             n => format!("keep {n}"),
         }
     );
-    println!("  log_level:     {}", config.log_level);
-    println!("  language:      {}", config.language);
+    ui::say!("  log_level:     {}", config.log_level);
+    ui::say!("  language:      {}", config.language);
 }
 
-// TODO(console)
 fn print_check_ok() {
-    println!("✅ Configuration is valid (no network access was needed).");
+    ui::say!("✅ Configuration is valid (no network access was needed).");
 }
 
-// TODO(console)
 fn print_check_missing(missing: &[String]) {
-    println!("❌ {} configured source(s) do not exist:", missing.len());
+    ui::say!("❌ {} configured source(s) do not exist:", missing.len());
     for m in missing {
-        println!("    • {m}");
+        ui::say!("    • {m}");
     }
 }
 

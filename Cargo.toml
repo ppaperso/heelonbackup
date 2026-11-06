@@ -1,6 +1,6 @@
 [package]
 name = "heelonbackup"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["heelon"]
 description = "Reliable backup tool for Linux to Synology NAS (BeeStation) via SMB"
@@ -19,7 +19,7 @@ clap = { version = "4.5", features = ["derive", "cargo", "wrap_help"] }
 clap_complete = "4.5"
 
 # Async runtime (smbclient sessions run as child processes)
-tokio = { version = "1.38", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "signal", "time"] }
+tokio = { version = "1.38", features = ["rt-multi-thread", "macros", "net", "process", "io-util", "sync", "signal", "time"] }
 
 # Error handling
 thiserror = "2.0"
@@ -40,6 +40,11 @@ tempfile = "3.10"
 sha2 = "0.11"
 hex = "0.4"
 
+# Authenticated, streaming archives of sensitive sources
+age = "0.11.3"
+flate2 = "1.1"
+tar = "0.4"
+
 # Logging
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter"] }
@@ -55,7 +60,9 @@ rpassword = "7.3"
 
 # statvfs / access / hostname
 nix = { version = "0.31", features = ["fs", "hostname"] }
-dialoguer = { version = "0.12.0", default-features = false }
+
+# Interactive console (full-screen dashboard; crossterm backend re-exported as ratatui::crossterm)
+ratatui = "0.30"
 
 [profile.release]
 opt-level = 3

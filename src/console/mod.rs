@@ -1,175 +1,404 @@
-//! Interactive console (simple TUI via dialoguer menus)
+//! Interactive console: full-screen dashboard (ratatui)
 //!
-//! Opened when `heelonbackup` runs without a subcommand. The console holds no
-//! business logic: each flow collects the user's choices (bilingual EN/FR,
-//! see `strings.rs`), then calls the same `service::` orchestration as the CLI.
-//! Esc / q / Ctrl-C always leave cleanly (never a panic); during a real
-//! transfer the service layer handles Ctrl-C itself (`Exit::Interrupted`).
+//! Opened when `heelonbackup` runs without a subcommand. The header shows the
+//! version, environment, date/time and language; panels show the NAS state
+//! (TCP check on the SMB port, refreshed in the background) and the last backup;
+//! the terminal pane streams the output and progress of the running operation.
+//!
+//! The console holds no business logic: each flow collects the user's choices
+//! through modal dialogs (`prompt.rs`), then calls the same `service::`
+//! orchestration as the CLI, whose output is routed here by `ui::install_sink`.
+//! Esc / q / Ctrl-C always leave cleanly; while an operation runs, Ctrl-C
+//! interrupts it (`service::request_interrupt`) and the dashboard stays open.
 
+mod app;
 mod backup;
 mod config;
+mod prompt;
 mod restore;
+mod seal;
 mod status;
 mod strings;
 mod validate;
 mod verify;
+mod view;
 
 pub(crate) use strings::{Lang, Strings};
 
-use crate::config::Config;
+use self::app::{Action, App, Command, Dialog, Nas};
+use self::prompt::Request;
+use crate::config::{self as cfg, Config, SmbTarget};
 use crate::error::{BackupError, Result};
-use crate::service::Exit;
-use dialoguer::Input;
-use dialoguer::Select;
-use dialoguer::theme::ColorfulTheme;
-use std::io::{ErrorKind, IsTerminal};
-use std::path::Path;
-use tracing::warn;
+use crate::service::{self, Exit};
+use crate::storage::LocalHistory;
+use crate::storage::smb_client::Reachability;
+use crate::ui::{self, Stream};
+use ratatui::DefaultTerminal;
+use ratatui::crossterm::event::{self, Event, KeyEventKind};
+use ratatui::crossterm::terminal::{
+    EnterAlternateScreen, LeaveAlternateScreen, disable_raw_mode, enable_raw_mode,
+};
+use ratatui::crossterm::{cursor, execute};
+use std::io::IsTerminal;
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::time::Duration;
+use tokio::signal::unix::{SignalKind, signal};
+use tokio::sync::{Notify, mpsc};
+use tokio::task::JoinHandle;
 
-/// Action behind a menu entry
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum Action {
-    Backup,
-    Status,
-    Verify,
-    Restore,
-    Config,
-    Language,
-    Quit,
-}
+pub(crate) use prompt::{confirm, input, select};
 
-/// Menu index -> action (any index past the list is Quit)
-fn action_at(index: usize) -> Action {
-    match index {
-        0 => Action::Backup,
-        1 => Action::Status,
-        2 => Action::Verify,
-        3 => Action::Restore,
-        4 => Action::Config,
-        5 => Action::Language,
-        _ => Action::Quit,
+/// Redraw period (clock, spinners, progress)
+const TICK: Duration = Duration::from_millis(200);
+/// NAS reachability refresh period
+const PROBE_EVERY: Duration = Duration::from_secs(15);
+
+/// Ask the SMB password once per console session (masked dialog, memory only).
+/// `Ok(false)`: cancelled by the user.
+pub(crate) async fn ensure_password(s: &Strings, config: &Config) -> Result<bool> {
+    if cfg::has_session_password() {
+        return Ok(true);
     }
-}
-
-/// Run a blocking dialogue on a dedicated thread so Ctrl-C (the terminal layer
-/// restores the terminal, then raises SIGINT) interrupts it cleanly.
-/// `Ok(None)` = Esc / q / Ctrl-C: the caller goes back without a panic.
-pub(crate) async fn interact_opt<T, F>(f: F) -> Result<Option<T>>
-where
-    F: FnOnce() -> dialoguer::Result<Option<T>> + Send + 'static,
-    T: Send + 'static,
-{
-    let handle = tokio::task::spawn_blocking(f);
-    let res = tokio::select! {
-        joined = handle => joined.unwrap_or(Ok(None)),
-        _ = tokio::signal::ctrl_c() => Ok(None),
-    };
-    match res {
-        Ok(value) => Ok(value),
-        Err(dialoguer::Error::IO(e)) if e.kind() == ErrorKind::Interrupted => Ok(None),
-        Err(dialoguer::Error::IO(e)) => Err(BackupError::io("console dialogue failed", e)),
-    }
-}
-
-/// Select one item in a list
-pub(crate) async fn select(prompt: &str, items: &[&str], default: usize) -> Result<Option<usize>> {
-    let prompt = prompt.to_string();
-    let items: Vec<String> = items.iter().map(|s| s.to_string()).collect();
-    interact_opt(move || {
-        let theme = ColorfulTheme::default();
-        Select::with_theme(&theme)
-            .with_prompt(prompt)
-            .items(&items)
-            .default(default)
-            .interact_opt()
-    })
-    .await
-}
-
-/// Yes/No question, rendered as a two-item select so it follows the active language
-pub(crate) async fn confirm(
-    prompt: &str,
-    yes: &str,
-    no: &str,
-    default_yes: bool,
-) -> Result<Option<bool>> {
-    let index = select(prompt, &[yes, no], usize::from(!default_yes)).await?;
-    Ok(index.map(|i| i == 0))
-}
-
-/// Free-text input (empty allowed). dialoguer's Input has no Esc-cancel;
-/// Ctrl-C still interrupts cleanly via `interact_opt`.
-pub(crate) async fn input(prompt: &str, default: Option<&str>) -> Result<Option<String>> {
-    let prompt = prompt.to_string();
-    let default = default.map(str::to_string);
-    interact_opt(move || {
-        let theme = ColorfulTheme::default();
-        let mut field = Input::<String>::with_theme(&theme)
-            .with_prompt(prompt)
-            .allow_empty(true);
-        if let Some(default) = default {
-            field = field.default(default);
+    let target = SmbTarget::parse(&config.smb.url)?;
+    let title = format!(
+        "{} {}@{}",
+        s.password_prompt, config.smb.username, target.host
+    );
+    loop {
+        match prompt::password(&title).await? {
+            None => return Ok(false),
+            Some(p) if p.is_empty() => continue,
+            Some(p) => {
+                cfg::set_session_password(Some(p));
+                return Ok(true);
+            }
         }
-        field.interact_text().map(Some)
-    })
-    .await
+    }
 }
 
-/// Main loop of the interactive console
+/// Main entry point of the interactive console
 pub(crate) async fn run(config_path: &Path) -> Result<Exit> {
-    if !std::io::stdin().is_terminal() {
+    if !std::io::stdin().is_terminal() || !std::io::stdout().is_terminal() {
         eprintln!(
             "The interactive console needs a terminal; pass a subcommand instead (see `heelonbackup --help`)."
         );
         return Ok(Exit::Failure);
     }
-    let config = Config::load(config_path).ok();
-    if let Some(warning) = config
-        .as_ref()
-        .and_then(|c| Config::permission_warning(config_path, c))
-    {
-        warn!("{warning}");
-    }
-    let mut lang = config
-        .as_ref()
+    let lang = Config::load(config_path)
         .map(|c| Lang::from_config(&c.language))
         .unwrap_or(Lang::En);
-    loop {
-        let s = lang.strings();
-        let items = [
-            s.menu_backup,
-            s.menu_status,
-            s.menu_verify,
-            s.menu_restore,
-            s.menu_config,
-            s.menu_language,
-            s.menu_quit,
-        ];
-        let Some(index) = select(s.menu_prompt, &items, 0).await? else {
-            // Esc / q / Ctrl-C at the main menu: clean quit
-            return Ok(Exit::Success);
-        };
-        let flow = match action_at(index) {
-            Action::Backup => backup::run(s, config_path).await,
-            Action::Status => status::run(s, config_path).await,
-            Action::Verify => verify::run(s, config_path).await,
-            Action::Restore => restore::run(s, config_path).await,
-            Action::Config => config::run(s, config_path).await,
-            Action::Language => {
-                lang = lang.toggle();
-                persist_language(config_path, lang)?;
-                println!("{}", lang.strings().language_saved);
-                continue;
+
+    let (out_tx, out_rx) = mpsc::unbounded_channel();
+    let (req_tx, req_rx) = mpsc::unbounded_channel();
+    ui::install_sink(out_tx);
+    prompt::connect(Some(req_tx));
+
+    let mut terminal = ratatui::init();
+    let result = Dashboard::new(config_path.to_path_buf(), lang)
+        .run(&mut terminal, out_rx, req_rx)
+        .await;
+    ratatui::restore();
+
+    prompt::connect(None);
+    ui::remove_sink();
+    cfg::set_session_password(None);
+    result
+}
+
+/// Terminal events read on a dedicated thread (crossterm's reader is blocking)
+struct EventReader {
+    paused: Arc<AtomicBool>,
+    stop: Arc<AtomicBool>,
+}
+
+impl EventReader {
+    fn spawn(tx: mpsc::UnboundedSender<Event>) -> Self {
+        let paused = Arc::new(AtomicBool::new(false));
+        let stop = Arc::new(AtomicBool::new(false));
+        let (p, st) = (paused.clone(), stop.clone());
+        std::thread::spawn(move || {
+            while !st.load(Ordering::Relaxed) {
+                if p.load(Ordering::Relaxed) {
+                    std::thread::sleep(Duration::from_millis(50));
+                    continue;
+                }
+                match event::poll(Duration::from_millis(100)) {
+                    Ok(true) => match event::read() {
+                        Ok(ev) => {
+                            if tx.send(ev).is_err() {
+                                break;
+                            }
+                        }
+                        Err(_) => break,
+                    },
+                    Ok(false) => {}
+                    Err(_) => break,
+                }
             }
-            Action::Quit => return Ok(Exit::Success),
+        });
+        Self { paused, stop }
+    }
+}
+
+impl Drop for EventReader {
+    fn drop(&mut self) {
+        self.stop.store(true, Ordering::Relaxed);
+    }
+}
+
+struct Dashboard {
+    app: App,
+    config_path: PathBuf,
+    probe_now: Arc<Notify>,
+}
+
+impl Dashboard {
+    fn new(config_path: PathBuf, lang: Lang) -> Self {
+        Self {
+            app: App::new(lang),
+            config_path,
+            probe_now: Arc::new(Notify::new()),
+        }
+    }
+
+    async fn run(
+        mut self,
+        terminal: &mut DefaultTerminal,
+        mut out_rx: mpsc::UnboundedReceiver<(Stream, String)>,
+        mut req_rx: mpsc::UnboundedReceiver<Request>,
+    ) -> Result<Exit> {
+        let (ev_tx, mut ev_rx) = mpsc::unbounded_channel();
+        let reader = EventReader::spawn(ev_tx);
+        let (nas_tx, mut nas_rx) = mpsc::unbounded_channel();
+        let prober = tokio::spawn(probe_loop(
+            self.config_path.clone(),
+            nas_tx,
+            self.probe_now.clone(),
+        ));
+        // Ctrl-C arrives as a key in raw mode; a SIGINT sent by `kill` is handled the same way
+        let mut sigint = signal(SignalKind::interrupt())
+            .map_err(|e| BackupError::io("cannot watch SIGINT", e))?;
+        let mut tick = tokio::time::interval(TICK);
+        let mut flow: Option<JoinHandle<Result<Exit>>> = None;
+
+        self.reload();
+        if let Some(warning) = self
+            .app
+            .config
+            .as_ref()
+            .and_then(|c| Config::permission_warning(&self.config_path, c))
+        {
+            self.app.push_line(Stream::Err, format!("⚠ {warning}"));
+        }
+
+        let result = loop {
+            if !self.app.suspended {
+                terminal
+                    .draw(|frame| view::draw(frame, &self.app))
+                    .map_err(|e| BackupError::io("cannot draw the console", e))?;
+            }
+            let command = tokio::select! {
+                Some(ev) = ev_rx.recv() => match ev {
+                    Event::Key(key) if key.kind == KeyEventKind::Press => self.app.on_key(key),
+                    _ => Command::None,
+                },
+                Some((stream, line)) = out_rx.recv() => {
+                    self.app.push_line(stream, line);
+                    while let Ok((stream, line)) = out_rx.try_recv() {
+                        self.app.push_line(stream, line);
+                    }
+                    Command::None
+                }
+                Some(request) = req_rx.recv() => {
+                    self.on_request(request, terminal, &reader).await;
+                    Command::None
+                }
+                Some(nas) = nas_rx.recv() => {
+                    self.app.nas = nas;
+                    Command::None
+                }
+                done = async { flow.as_mut().expect("guarded by is_some").await }, if flow.is_some() => {
+                    flow = None;
+                    // the flow's last lines may still be queued: show them before its result
+                    while let Ok((stream, line)) = out_rx.try_recv() {
+                        self.app.push_line(stream, line);
+                    }
+                    self.on_flow_done(done);
+                    Command::None
+                }
+                _ = sigint.recv() => if self.app.running.is_some() {
+                    Command::Interrupt
+                } else {
+                    Command::Quit
+                },
+                _ = tick.tick() => {
+                    self.app.tick = self.app.tick.wrapping_add(1);
+                    Command::None
+                }
+            };
+            match command {
+                Command::None => {}
+                Command::Start(action) => flow = Some(self.start(action)),
+                Command::ToggleLanguage => self.toggle_language(),
+                Command::Interrupt => {
+                    service::request_interrupt();
+                    let s = self.app.strings();
+                    self.app
+                        .push_line(Stream::Err, format!("⏹ {}", s.interrupt_requested));
+                }
+                Command::Quit => break Ok(Exit::Success),
+            }
         };
-        match flow {
-            // an interrupted transfer keeps the CLI semantics (exit 130)
-            Ok(Exit::Interrupted) => return Ok(Exit::Interrupted),
-            Ok(_) => {}
-            Err(BackupError::Interrupted) => return Err(BackupError::Interrupted),
-            // any other flow error is shown, then the menu comes back
-            Err(e) => eprintln!("❌ Error: {e}"),
+
+        self.app.cancel_dialog();
+        if let Some(flow) = flow {
+            service::request_interrupt();
+            flow.abort();
+        }
+        prober.abort();
+        drop(reader);
+        result
+    }
+
+    /// Reload what the panels show: configuration and local history
+    fn reload(&mut self) {
+        self.app.config = Config::load(&self.config_path).ok();
+        self.app.history = LocalHistory::open().load_all();
+    }
+
+    fn start(&mut self, action: Action) -> JoinHandle<Result<Exit>> {
+        let s = self.app.strings();
+        self.app.running = Some(action);
+        self.app.mark_flow_start();
+        self.app.info(format!("━━ {} ━━", action.label(s)));
+        service::clear_interrupt();
+        let path = self.config_path.clone();
+        tokio::spawn(async move {
+            match action {
+                Action::Backup => backup::run(s, &path).await,
+                Action::Status => status::run(s, &path).await,
+                Action::List => status::run_list(s, &path).await,
+                Action::Verify => verify::run(s, &path).await,
+                Action::Restore => restore::run(s, &path).await,
+                Action::Seal => seal::run(s, &path).await,
+                Action::Config => config::run(s, &path).await,
+                Action::Language | Action::Quit => Ok(Exit::Success),
+            }
+        })
+    }
+
+    fn on_flow_done(&mut self, done: std::result::Result<Result<Exit>, tokio::task::JoinError>) {
+        self.app.running = None;
+        self.app.cancel_dialog();
+        let s = self.app.strings();
+        let result = done.unwrap_or_else(|e| {
+            Err(BackupError::io(
+                "the operation stopped unexpectedly",
+                std::io::Error::other(e),
+            ))
+        });
+        match result {
+            Ok(Exit::Success) => self.app.info(format!("✔ {}", s.result_ok)),
+            Ok(Exit::Warnings) => self
+                .app
+                .push_line(Stream::Err, format!("⚠ {}", s.result_warnings)),
+            Ok(Exit::Failure) => self
+                .app
+                .push_line(Stream::Err, format!("✖ {}", s.result_failed)),
+            Ok(Exit::Interrupted) | Err(BackupError::Interrupted) => {
+                self.app
+                    .push_line(Stream::Err, format!("⏹ {}", s.result_interrupted));
+            }
+            Err(e) => {
+                if matches!(e, BackupError::SmbAuth(_)) {
+                    cfg::set_session_password(None);
+                }
+                self.app
+                    .push_line(Stream::Err, format!("❌ {}: {e}", s.error));
+                let mut source = std::error::Error::source(&e);
+                while let Some(cause) = source {
+                    self.app
+                        .push_line(Stream::Err, format!("   caused by: {cause}"));
+                    source = cause.source();
+                }
+                if matches!(e, BackupError::SmbAuth(_)) {
+                    self.app
+                        .push_line(Stream::Err, format!("⚠ {}", s.password_rejected));
+                }
+            }
+        }
+        self.app.focus_flow_output();
+        self.reload();
+        self.probe_now.notify_one();
+    }
+
+    fn toggle_language(&mut self) {
+        self.app.lang = self.app.lang.toggle();
+        let s = self.app.strings();
+        match persist_language(&self.config_path, self.app.lang) {
+            Ok(()) => self.app.info(s.language_saved),
+            Err(e) => self
+                .app
+                .push_line(Stream::Err, format!("❌ {}: {e}", s.error)),
+        }
+    }
+
+    async fn on_request(
+        &mut self,
+        request: Request,
+        terminal: &mut DefaultTerminal,
+        reader: &EventReader,
+    ) {
+        match request {
+            Request::Ask { title, kind, reply } => {
+                self.app.open_dialog(Dialog::new(title, kind, reply));
+            }
+            Request::Suspend(done) => {
+                reader.paused.store(true, Ordering::Relaxed);
+                // let an in-flight poll of the reader thread finish
+                tokio::time::sleep(Duration::from_millis(150)).await;
+                let _ = disable_raw_mode();
+                let _ = execute!(std::io::stdout(), LeaveAlternateScreen, cursor::Show);
+                self.app.suspended = true;
+                let _ = done.send(());
+            }
+            Request::Resume(done) => {
+                let _ = enable_raw_mode();
+                let _ = execute!(std::io::stdout(), EnterAlternateScreen, cursor::Hide);
+                let _ = terminal.clear();
+                self.app.suspended = false;
+                reader.paused.store(false, Ordering::Relaxed);
+                let _ = done.send(());
+            }
+        }
+    }
+}
+
+/// Check the NAS now, then every `PROBE_EVERY` (or when asked, after an operation)
+async fn probe_loop(path: PathBuf, tx: mpsc::UnboundedSender<Nas>, now: Arc<Notify>) {
+    loop {
+        let state = match Config::load(&path) {
+            Ok(config) => match service::remote::reachability(&config).await {
+                Ok((target, Reachability::Online(latency))) => Nas::Online {
+                    address: service::remote::probed_address(&target),
+                    latency,
+                },
+                Ok((target, Reachability::Offline(reason))) => Nas::Offline {
+                    address: service::remote::probed_address(&target),
+                    reason,
+                },
+                Err(_) => Nas::NoConfig,
+            },
+            Err(_) => Nas::NoConfig,
+        };
+        if tx.send(state).is_err() {
+            return;
+        }
+        tokio::select! {
+            () = tokio::time::sleep(PROBE_EVERY) => {}
+            () = now.notified() => {}
         }
     }
 }
@@ -181,21 +410,4 @@ fn persist_language(path: &Path, lang: Lang) -> Result<()> {
     config.validate()?;
     config.save(path)?;
     Ok(())
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn menu_actions_are_mapped_in_order() {
-        assert_eq!(action_at(0), Action::Backup);
-        assert_eq!(action_at(1), Action::Status);
-        assert_eq!(action_at(2), Action::Verify);
-        assert_eq!(action_at(3), Action::Restore);
-        assert_eq!(action_at(4), Action::Config);
-        assert_eq!(action_at(5), Action::Language);
-        assert_eq!(action_at(6), Action::Quit);
-        assert_eq!(action_at(usize::MAX), Action::Quit);
-    }
 }

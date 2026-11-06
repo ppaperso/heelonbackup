@@ -11,6 +11,7 @@ This document provides a complete reference for all HeelonBackup configuration o
 5. [Complete Example](#complete-example)
 6. [Environment Variables](#environment-variables)
 7. [Configuration Commands](#configuration-commands)
+8. [Sealed Sources](#sealed-sources)
 
 ## Configuration File Location
 
@@ -80,7 +81,7 @@ smb://server:port/share
 
 ### Authentication
 
-**Recommended (interactive):** in a terminal, the password is asked with a masked prompt when the NAS connection starts — nothing is stored in the shell history, the environment or on disk.
+**Recommended (interactive):** in a terminal, the password is asked with a masked prompt when the NAS connection starts (the interactive console asks it once per session and keeps it in memory only) — nothing is stored in the shell history, the environment or on disk.
 
 **Non-interactive runs only** (scripts, cron, `sudo` without a tty): use the `HEELONBACKUP_SMB_PASSWORD` environment variable (set and not empty):
 
@@ -373,6 +374,71 @@ Here's a complete configuration file with all options:
 
 ---
 
+## Sealed Sources
+
+Optional: omit `sealed` or set it to `null` to preserve ordinary backups.
+To encrypt sensitive sources such as SSH keys **before** sending them to the NAS,
+add this top-level section:
+
+```json
+"sealed": {
+  "staging_dir": "~/.local/share/heelonbackup/sealed",
+  "secret": {
+    "tool": "secret-tool",
+    "attribute": "heelonbackup",
+    "key": "seal"
+  },
+  "items": [
+    { "path": "~/.ssh", "archive": "ssh.tar.gz.age" }
+  ]
+}
+```
+
+| Field | Requirement |
+|-------|-------------|
+| `staging_dir` | Absolute path or `~/path`; private directory (0700), created automatically |
+| `secret` | Optional; defaults to the lookup above. Only `secret-tool` is supported |
+| `items` | Non-empty list of existing files/directories |
+| `items[].path` | Absolute path or `~/path`, no `..`, not a filesystem root |
+| `items[].archive` | Unique filename ending in `.tar.gz.age` (case-insensitive uniqueness) |
+
+Staging and sensitive sources must not overlap. Staging itself cannot be a symlink.
+Remove `.ssh` from `backup.sources`; if a parent such as `/home/user` remains a
+source, the sensitive subtree is automatically excluded. Protection also applies
+to explicit CLI paths, regardless of exclusion globs. Other copies or hard links
+outside the configured sensitive paths are **not** protected: seal those paths too.
+
+Full backups automatically include the configured encrypted archives; adding
+staging to `backup.sources` is optional. Only listed archives are transferred from
+staging, never stray files, lock files or temporary archives. Partial backups
+include archives only if their selected paths overlap staging or sensitive sources.
+Selecting one sensitive file includes all configured archives.
+
+Every real backup refreshes all sealed items before scanning or connecting to the NAS.
+The tar → gzip → age pipeline streams in memory: no plaintext archive or passphrase
+is written to disk. Encryption is authenticated (age passphrase mode, scrypt +
+ChaCha20-Poly1305), with fresh randomness each run. Archive files are 0600 and
+atomically replaced after all archives have been generated; a staging lock remains
+held throughout backup transfer. Failure, missing sources, keyring timeout, unreadable
+archives or an archive exceeding `backup.max_file_size` abort the backup before NAS
+access. Configured exclusion globs cannot silently omit required archives.
+Symlinks inside an archive are stored as links, never followed.
+
+`heelonbackup seal` refreshes archives without NAS access. Both `seal --dry-run`
+and `backup --dry-run` validate and show the plan without keyring access or writes.
+Planned archive sizes and contents are not part of dry-run scan counts.
+See the [user guide](user_guide.md#sealing-sensitive-sources) for setup and recovery.
+
+The console's **Seal sensitive sources (`e`)** menu configures one source at a
+time, preserving existing items and ordinary sources. The staging directory is
+shared by every item; changing it changes the destination for all archives.
+Configuration is validated and previewed before explicit save confirmation.
+The same guided setup is also available under **Configuration**.
+Passphrase storage is a separate, explicitly confirmed keyring operation with
+two masked prompts (`seal --set-passphrase` in the CLI), never a JSON property.
+An empty/mismatched passphrase is rejected and keyring output is never displayed.
+Replacing the keyring passphrase does not change old archives.
+
 ## Environment Variables
 
 HeelonBackup supports the following environment variables:
@@ -392,6 +458,17 @@ source ~/.bashrc
 ```
 
 **Note:** This is the recommended way to provide your SMB password.
+
+### `HEELONBACKUP_SEAL_PASSPHRASE`
+
+Optional seal-passphrase override, including for unattended runs. If absent,
+`secret-tool lookup heelonbackup seal` is used (15-second timeout). An explicitly
+empty or non-UTF-8 override is rejected. The passphrase is never logged, serialized
+or passed in process arguments; seal and SMB passwords are removed from the
+keyring subprocess environment. Prefer an unlocked session keyring or a trusted
+secret provider rather than storing the override in shell profiles or scripts.
+Keep an independent offline copy of the passphrase: loss of the keyring must not
+make the backups unrecoverable.
 
 ### `RUST_LOG`
 

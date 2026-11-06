@@ -260,7 +260,7 @@ impl LocalHistory {
     }
 
     #[cfg(test)]
-    fn at(dir: PathBuf) -> Self {
+    pub(crate) fn at(dir: PathBuf) -> Self {
         Self { dir }
     }
 
@@ -280,6 +280,62 @@ impl LocalHistory {
 
     pub fn remove(&self, name: &str) {
         let _ = fs::remove_file(self.dir.join(format!("{name}.json")));
+    }
+
+    /// List only regular backup summary files; never traverse links or unrelated files.
+    pub(crate) fn cleanup_candidates(&self) -> Result<Vec<PathBuf>> {
+        let metadata = match fs::symlink_metadata(&self.dir) {
+            Ok(metadata) => metadata,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(Vec::new()),
+            Err(e) => return Err(BackupError::io("cannot inspect local history directory", e)),
+        };
+        if !metadata.is_dir() {
+            return Err(BackupError::InvalidPath(
+                "local history must be a directory, not a symbolic link".into(),
+            ));
+        }
+        let mut files = Vec::new();
+        for entry in
+            fs::read_dir(&self.dir).map_err(|e| BackupError::io("cannot list local history", e))?
+        {
+            let entry = entry.map_err(|e| BackupError::io("cannot read local history entry", e))?;
+            let path = entry.path();
+            if path.extension().is_some_and(|ext| ext == "json")
+                && path
+                    .file_stem()
+                    .and_then(|name| name.to_str())
+                    .is_some_and(is_backup_name)
+                && entry
+                    .file_type()
+                    .map_err(|e| BackupError::io("cannot inspect history entry", e))?
+                    .is_file()
+            {
+                files.push(path);
+            }
+        }
+        files.sort();
+        Ok(files)
+    }
+
+    /// Delete the exact previewed set, refusing a changed inventory.
+    pub(crate) fn clear_previewed(&self, files: &[PathBuf]) -> Result<()> {
+        if self.cleanup_candidates()? != files {
+            return Err(BackupError::InvalidPath(
+                "local history changed; preview it again before clearing".into(),
+            ));
+        }
+        for path in files {
+            fs::remove_file(path).map_err(|e| {
+                BackupError::io(
+                    format!(
+                        "cannot remove local history summary {} (cleanup may be partial)",
+                        path.display()
+                    ),
+                    e,
+                )
+            })?;
+        }
+        Ok(())
     }
 
     /// All summaries, newest first (unreadable files are ignored)
@@ -318,6 +374,43 @@ mod tests {
             mtime: None,
             mode: None,
         }
+    }
+
+    #[test]
+    fn cleanup_preserves_unrelated_files_links_and_directories() {
+        let dir = tempfile::tempdir().unwrap();
+        let history = LocalHistory::at(dir.path().join("history"));
+        fs::create_dir_all(&history.dir).unwrap();
+        let summary = history.dir.join("20261106_120000.json");
+        fs::write(&summary, b"even an unreadable JSON summary can be cleared").unwrap();
+        fs::write(history.dir.join("config.json"), b"keep").unwrap();
+        fs::write(history.dir.join("20261106_120001.json.tmp"), b"keep").unwrap();
+        fs::create_dir(history.dir.join("20261106_120002.json")).unwrap();
+        let outside = dir.path().join("outside");
+        fs::write(&outside, b"keep outside").unwrap();
+        std::os::unix::fs::symlink(&outside, history.dir.join("20261106_120003.json")).unwrap();
+        let files = history.cleanup_candidates().unwrap();
+        assert_eq!(files, vec![summary.clone()]);
+        history.clear_previewed(&files).unwrap();
+        assert!(!summary.exists());
+        assert_eq!(fs::read(outside).unwrap(), b"keep outside");
+        assert_eq!(fs::read_dir(&history.dir).unwrap().count(), 4);
+    }
+
+    #[test]
+    fn cleanup_refuses_changed_inventory_and_symlink_root() {
+        let dir = tempfile::tempdir().unwrap();
+        let history = LocalHistory::at(dir.path().join("history"));
+        assert!(history.cleanup_candidates().unwrap().is_empty());
+        fs::create_dir(&history.dir).unwrap();
+        fs::write(history.dir.join("20261106_120000.json"), b"old").unwrap();
+        let preview = history.cleanup_candidates().unwrap();
+        fs::write(history.dir.join("20261106_120001.json"), b"new").unwrap();
+        assert!(history.clear_previewed(&preview).is_err());
+        assert_eq!(fs::read_dir(&history.dir).unwrap().count(), 2);
+        let alias = LocalHistory::at(dir.path().join("alias"));
+        std::os::unix::fs::symlink(&history.dir, &alias.dir).unwrap();
+        assert!(alias.cleanup_candidates().is_err());
     }
 
     #[test]

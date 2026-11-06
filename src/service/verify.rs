@@ -60,7 +60,7 @@ pub async fn run(config: &Config, name: Option<&str>, deep: bool) -> Result<Exit
         let transfer = Transfer::new(items, pb.clone());
         interrupted = tokio::select! {
             () = transfer.run(&client, Mode::Download { discard: true }, config.backup.workers) => false,
-            _ = tokio::signal::ctrl_c() => true,
+            () = super::interrupted() => true,
         };
         pb.finish_and_clear();
         for ((key, info), outcome) in present.iter().zip(transfer.outcomes()) {
@@ -90,14 +90,11 @@ pub async fn run(config: &Config, name: Option<&str>, deep: bool) -> Result<Exit
 }
 
 // ---- Display ----
-// TODO(console): all the printing of this module is grouped in the small
-// functions below. In phase 3 the display will be passed as a parameter of
-// run() so the console can render its own output; until then they keep the
-// exact CLI output.
+// Every line goes through `ui::say!`: printed as-is by the CLI, shown in the
+// terminal pane by the console.
 
-// TODO(console)
 fn print_verify_header(manifest: &BackupManifest, deep: bool) {
-    println!(
+    ui::say!(
         "🔍 Verifying backup {} ({}, {} files, {}){}",
         manifest.name,
         ui::date(manifest.started_at),
@@ -111,19 +108,18 @@ fn print_verify_header(manifest: &BackupManifest, deep: bool) {
     );
 }
 
-// TODO(console)
 fn print_verify_report(
     manifest: &BackupManifest,
     problems: &[(String, String)],
     interrupted: bool,
     deep: bool,
 ) {
-    println!("{}", ui::RULE);
+    ui::say!("{}", ui::RULE);
     let ok = manifest.files.len() - problems.len();
     if interrupted {
-        println!("⏹  Verification interrupted");
+        ui::say!("⏹  Verification interrupted");
     } else if problems.is_empty() {
-        println!(
+        ui::say!(
             "✅ Backup {} is intact: {ok} files {}",
             manifest.name,
             if deep {
@@ -133,7 +129,7 @@ fn print_verify_report(
             }
         );
     } else {
-        println!(
+        ui::say!(
             "❌ Backup {} has {} problem(s)",
             manifest.name,
             problems.len()
@@ -141,11 +137,11 @@ fn print_verify_report(
         ui::print_limited(problems, 20, |(k, r)| format!("{k}: {r}"));
     }
     if manifest.failed_count > 0 {
-        println!(
+        ui::say!(
             "ℹ️  {} file(s) had already failed during the backup (status: {})",
             manifest.failed_count,
             manifest.status.label()
         );
     }
-    println!("{}", ui::RULE);
+    ui::say!("{}", ui::RULE);
 }

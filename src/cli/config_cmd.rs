@@ -19,6 +19,8 @@ pub enum ConfigAction {
     Edit,
     /// Validate the configuration file and resolve the configured sources (no network access)
     Check,
+    /// List the configured sources (found on disk or missing) and the exclude patterns
+    Sources,
     /// Print the path of the configuration file
     Path,
 }
@@ -30,6 +32,7 @@ impl From<ConfigAction> for service::config::Action {
             ConfigAction::Show => Self::Show,
             ConfigAction::Edit => Self::Edit,
             ConfigAction::Check => Self::Check,
+            ConfigAction::Sources => Self::Sources,
             ConfigAction::Path => Self::Path,
         }
     }

@@ -316,7 +316,7 @@ async fn execute(
     let transfer = Transfer::new(items, pb.clone());
     let interrupted = tokio::select! {
         () = transfer.run(client, Mode::Download { discard: false }, config.backup.workers) => false,
-        _ = tokio::signal::ctrl_c() => true,
+        () = super::interrupted() => true,
     };
     pb.finish_and_clear();
 
@@ -391,15 +391,12 @@ fn finalize(part: &Path, p: &Planned<'_>) -> std::result::Result<(), String> {
 }
 
 // ---- Display ----
-// TODO(console): all the printing of this module is grouped in the small
-// functions below. In phase 3 the display will be passed as a parameter of
-// run() so the console can render its own output; until then they keep the
-// exact CLI output.
+// Every line goes through `ui::say!`: printed as-is by the CLI, shown in the
+// terminal pane by the console.
 
 /// Header of the restore plan: backup, destination
-// TODO(console)
 fn print_plan_header(manifest: &BackupManifest, target: Option<&Path>, dry_run: bool) {
-    println!(
+    ui::say!(
         "🔁 Restore plan{}",
         if dry_run {
             " (dry run: nothing will be written)"
@@ -407,8 +404,8 @@ fn print_plan_header(manifest: &BackupManifest, target: Option<&Path>, dry_run: 
             ""
         }
     );
-    println!("{}", ui::RULE);
-    println!(
+    ui::say!("{}", ui::RULE);
+    ui::say!(
         "  Backup:          {} ({}, {} from {}, {})",
         manifest.name,
         ui::date(manifest.started_at),
@@ -416,7 +413,7 @@ fn print_plan_header(manifest: &BackupManifest, target: Option<&Path>, dry_run: 
         manifest.hostname,
         manifest.status.label()
     );
-    println!(
+    ui::say!(
         "  Destination:     {}",
         target.map_or("original locations".to_string(), |t| t
             .display()
@@ -425,10 +422,9 @@ fn print_plan_header(manifest: &BackupManifest, target: Option<&Path>, dry_run: 
 }
 
 /// One line per file system with enough free space
-// TODO(console)
 fn print_free_space_ok(space_ok: &[(PathBuf, u64, u64)]) {
     for (path, needed, available) in space_ok {
-        println!(
+        ui::say!(
             "  Free space:      OK on {} ({} needed, {} available)",
             path.display(),
             ui::bytes(*needed),
@@ -438,13 +434,12 @@ fn print_free_space_ok(space_ok: &[(PathBuf, u64, u64)]) {
 }
 
 /// Counts per action, then optionally every planned file
-// TODO(console)
 fn print_plan(plan: &[Planned<'_>], manifest: &BackupManifest, list: bool) {
     let count = |a: Action| plan.iter().filter(|p| p.action == a).collect::<Vec<_>>();
     let create = count(Action::Create);
     let overwrite = count(Action::Overwrite);
     let restore_bytes: u64 = create.iter().chain(&overwrite).map(|p| p.info.size).sum();
-    println!(
+    ui::say!(
         "  To restore:      {} files ({}){}",
         create.len() + overwrite.len(),
         ui::bytes(restore_bytes),
@@ -456,14 +451,14 @@ fn print_plan(plan: &[Planned<'_>], manifest: &BackupManifest, list: bool) {
     );
     let identical = count(Action::Identical);
     if !identical.is_empty() {
-        println!(
+        ui::say!(
             "  Already present: {} identical files (skipped)",
             identical.len()
         );
     }
     let conflicts = count(Action::Conflict);
     if !conflicts.is_empty() {
-        println!(
+        ui::say!(
             "  ⚠️  Conflicts:    {} existing files differ and will be kept (use --overwrite to replace them)",
             conflicts.len()
         );
@@ -473,7 +468,7 @@ fn print_plan(plan: &[Planned<'_>], manifest: &BackupManifest, list: bool) {
     }
     let blocked = count(Action::Blocked);
     if !blocked.is_empty() {
-        println!("  ❌ Cannot restore: {} files", blocked.len());
+        ui::say!("  ❌ Cannot restore: {} files", blocked.len());
         if !list {
             ui::print_limited(&blocked, 10, |p| {
                 format!("{}: {}", p.key, p.problem.as_deref().unwrap_or("?"))
@@ -481,12 +476,12 @@ fn print_plan(plan: &[Planned<'_>], manifest: &BackupManifest, list: bool) {
         }
     }
     if manifest.failed_count > 0 {
-        println!(
+        ui::say!(
             "  ℹ️  {} files had failed during this backup and are not in it",
             manifest.failed_count
         );
     }
-    println!(
+    ui::say!(
         "  Estimated time:  {}",
         ui::estimate(restore_bytes, LocalHistory::open().measured_rate())
     );
@@ -504,22 +499,20 @@ fn print_plan(plan: &[Planned<'_>], manifest: &BackupManifest, list: bool) {
                 .as_deref()
                 .map(|r| format!("  ({r})"))
                 .unwrap_or_default();
-            println!("    {label} {}{problem}", p.dest.display());
+            ui::say!("    {label} {}{problem}", p.dest.display());
         }
     }
 }
 
 /// Blocking free-space problems, then the closing rule
-// TODO(console)
 fn print_space_problems(problems: &[String]) {
     for problem in problems {
-        println!("  ❌ {problem}");
+        ui::say!("  ❌ {problem}");
     }
-    println!("{}", ui::RULE);
+    ui::say!("{}", ui::RULE);
 }
 
 /// Verdict of a dry run, printed; also returns the matching exit code
-// TODO(console)
 fn print_dry_run_result(
     space_ok: bool,
     nothing_possible: bool,
@@ -537,17 +530,15 @@ fn print_dry_run_result(
     } else {
         ("✅", "the restore would succeed", Exit::Success)
     };
-    println!("{icon} Dry run: {text}.");
+    ui::say!("{icon} Dry run: {text}.");
     exit
 }
 
-// TODO(console)
 fn print_nothing_to_restore() {
-    println!("Nothing to restore.");
+    ui::say!("Nothing to restore.");
 }
 
 /// Final report of a restore
-// TODO(console)
 #[allow(clippy::too_many_arguments)]
 fn print_restore_summary(
     restored: u64,
@@ -567,25 +558,25 @@ fn print_restore_summary(
     } else {
         ("❌", "Restore FAILED")
     };
-    println!("{}", ui::RULE);
-    println!("{icon} {title}");
-    println!("{}", ui::RULE);
-    println!(
+    ui::say!("{}", ui::RULE);
+    ui::say!("{icon} {title}");
+    ui::say!("{}", ui::RULE);
+    ui::say!(
         "  Restored:        {restored} files ({}), checksums verified",
         ui::bytes(restored_bytes)
     );
-    println!("  Duration:        {}", ui::duration(elapsed));
+    ui::say!("  Duration:        {}", ui::duration(elapsed));
     if conflicts > 0 {
-        println!("  Kept (conflict): {conflicts}");
+        ui::say!("  Kept (conflict): {conflicts}");
     }
     if blocked > 0 {
-        println!("  Not restorable:  {blocked}");
+        ui::say!("  Not restorable:  {blocked}");
     }
     if !failures.is_empty() {
-        println!("  Failed:          {}", failures.len());
+        ui::say!("  Failed:          {}", failures.len());
         ui::print_limited(failures, 10, |(p, r)| format!("{p}: {r}"));
     }
-    println!("{}", ui::RULE);
+    ui::say!("{}", ui::RULE);
 }
 
 #[cfg(test)]

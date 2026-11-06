@@ -3,7 +3,9 @@
 mod backup;
 mod common;
 mod config_cmd;
+mod history;
 mod restore;
+mod seal;
 mod status;
 mod verify;
 
@@ -37,6 +39,12 @@ pub enum Commands {
     /// Back up the configured sources, or the given files/folders, to the NAS
     Backup(backup::BackupArgs),
 
+    /// Seal sensitive sources into authenticated encrypted archives (no NAS access)
+    Seal(seal::SealArgs),
+
+    /// Manage local history without changing NAS backups
+    History(history::HistoryArgs),
+
     /// Show the result of the last backups made from this computer
     Status {
         /// Show every recorded backup
@@ -49,6 +57,9 @@ pub enum Commands {
 
     /// List the backups stored on the NAS
     List,
+
+    /// Check that the NAS answers on its SMB port (no password needed)
+    Ping,
 
     /// Check that a backup is complete on the NAS
     Verify {
@@ -109,12 +120,24 @@ pub async fn run() -> ExitCode {
             Ok(config) => backup::run(&config, args).await,
             Err(e) => Err(e),
         },
+        Commands::Seal(args) => match common::load_config(&config_path, verbose) {
+            Ok(config) => seal::run(&config, args).await,
+            Err(e) => Err(e),
+        },
         Commands::Status { all, detailed } => {
             init_logging(verbose, None);
             Ok(status::status(all, detailed))
         }
         Commands::List => match common::load_config(&config_path, verbose) {
             Ok(config) => status::list(&config).await,
+            Err(e) => Err(e),
+        },
+        Commands::History(args) => {
+            init_logging(verbose, None);
+            history::run(args)
+        }
+        Commands::Ping => match common::load_config(&config_path, verbose) {
+            Ok(config) => status::ping(&config).await,
             Err(e) => Err(e),
         },
         Commands::Verify { backup, deep } => match common::load_config(&config_path, verbose) {
@@ -151,6 +174,7 @@ fn exit_code(result: Result<Exit>) -> ExitCode {
             eprintln!("⏹  Interrupted");
             Exit::Interrupted.into()
         }
+
         Err(e) => {
             eprintln!("❌ Error: {e}");
             let mut source = std::error::Error::source(&e);
@@ -160,5 +184,26 @@ fn exit_code(result: Result<Exit>) -> ExitCode {
             }
             Exit::Failure.into()
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn sealed_only_cli_rejects_paths_and_passphrase_storage_rejects_dry_run() {
+        assert!(Cli::try_parse_from(["heelonbackup", "backup", "--sealed-only", "/tmp"]).is_err());
+        assert!(
+            Cli::try_parse_from(["heelonbackup", "backup", "--sealed-only", "--dry-run"]).is_ok()
+        );
+        assert!(
+            Cli::try_parse_from(["heelonbackup", "seal", "--set-passphrase", "--dry-run"]).is_err()
+        );
+        assert!(Cli::try_parse_from(["heelonbackup", "history", "clear"]).is_ok());
+        assert!(
+            Cli::try_parse_from(["heelonbackup", "history", "clear", "--yes", "--dry-run"])
+                .is_err()
+        );
     }
 }

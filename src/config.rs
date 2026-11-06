@@ -7,6 +7,7 @@ use std::fs;
 use std::io::{IsTerminal, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 /// Environment variable that selects the development environment (`dev`)
 pub const ENV_VAR: &str = "HEELONBACKUP_ENV";
@@ -86,6 +87,26 @@ impl Environment {
 /// Environment variable that overrides the SMB password from the configuration
 pub const PASSWORD_ENV: &str = "HEELONBACKUP_SMB_PASSWORD";
 
+/// Password typed once in the interactive console, reused by every NAS operation
+/// of the session. Memory only: never written to disk, gone when the process exits.
+static SESSION_PASSWORD: Mutex<Option<String>> = Mutex::new(None);
+
+fn session_password() -> std::sync::MutexGuard<'static, Option<String>> {
+    SESSION_PASSWORD
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Set (or forget, with `None`) the console session password
+pub(crate) fn set_session_password(password: Option<String>) {
+    *session_password() = password.filter(|p| !p.is_empty());
+}
+
+/// True once the console session has a password
+pub(crate) fn has_session_password() -> bool {
+    session_password().is_some()
+}
+
 /// SMB connection configuration
 #[derive(Clone, Serialize, Deserialize)]
 pub struct SmbConfig {
@@ -152,6 +173,91 @@ pub struct StorageConfig {
     pub retention: usize,
 }
 
+/// Sensitive sources archived locally before any NAS transfer.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SealedConfig {
+    pub staging_dir: String,
+    #[serde(default)]
+    pub secret: SealSecret,
+    pub items: Vec<SealedItem>,
+}
+
+/// Keyring lookup attributes, never the passphrase itself.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SealSecret {
+    pub tool: String,
+    pub attribute: String,
+    pub key: String,
+}
+
+impl Default for SealSecret {
+    fn default() -> Self {
+        Self {
+            tool: "secret-tool".into(),
+            attribute: "heelonbackup".into(),
+            key: "seal".into(),
+        }
+    }
+}
+
+/// A file or directory and its portable age archive filename.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SealedItem {
+    pub path: String,
+    pub archive: String,
+}
+
+impl SealedConfig {
+    /// Validate without accessing sources or the keyring.
+    pub fn validate(&self) -> Result<(), ConfigError> {
+        let absolute = |path: &str| {
+            (Path::new(path).is_absolute() || path.starts_with("~/"))
+                && !Path::new(path)
+                    .components()
+                    .any(|part| part == std::path::Component::ParentDir)
+                && is_safe_for_smbclient(path)
+        };
+        if !absolute(&self.staging_dir) {
+            return Err(ConfigError::Invalid(
+                "sealed.staging_dir must be an absolute path (or ~/path) without '..'".into(),
+            ));
+        }
+        if self.secret.tool != "secret-tool"
+            || [&self.secret.attribute, &self.secret.key].iter().any(|s| {
+                s.trim().is_empty() || s.starts_with('-') || s.chars().any(char::is_control)
+            })
+        {
+            return Err(ConfigError::Invalid(
+                "sealed.secret requires secret-tool and non-empty lookup attributes without options or control characters".into(),
+            ));
+        }
+        if self.items.is_empty() {
+            return Err(ConfigError::Invalid(
+                "sealed.items must not be empty".into(),
+            ));
+        }
+        let mut names = std::collections::HashSet::new();
+        for item in &self.items {
+            if !absolute(&item.path) || Path::new(&item.path).file_name().is_none() {
+                return Err(ConfigError::Invalid(
+                    "sealed item paths must be absolute (or ~/path), not roots, and without '..'"
+                        .into(),
+                ));
+            }
+            if !is_safe_component(&item.archive)
+                || !item.archive.ends_with(".tar.gz.age")
+                || !names.insert(item.archive.to_lowercase())
+            {
+                return Err(ConfigError::Invalid(
+                    "sealed archive names must be unique filenames ending in .tar.gz.age".into(),
+                ));
+            }
+        }
+        Ok(())
+    }
+}
+
 /// Main configuration structure
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Config {
@@ -160,6 +266,8 @@ pub struct Config {
     pub backup: BackupConfig,
     #[serde(default)]
     pub storage: StorageConfig,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sealed: Option<SealedConfig>,
     /// Log level for diagnostics (error, warn, info, debug, trace)
     #[serde(default = "default_log_level")]
     pub log_level: String,
@@ -249,6 +357,7 @@ impl Default for Config {
             },
             backup: BackupConfig::default(),
             storage: StorageConfig::default(),
+            sealed: None,
             log_level: default_log_level(),
             language: default_language(),
         }
@@ -417,6 +526,9 @@ impl Config {
             )));
         }
         self.remote_base()?;
+        if let Some(sealed) = &self.sealed {
+            sealed.validate()?;
+        }
         Ok(())
     }
 
@@ -459,6 +571,8 @@ impl Config {
 
     /// Password resolution order:
     ///
+    /// 0. the console session password, when the interactive console has asked for it
+    ///    (its full-screen display cannot host a terminal prompt);
     /// 1. interactive terminal (stdin is a tty): masked prompt when the NAS
     ///    connection starts — the password is a secret typed by the user, never
     ///    taken from the environment in an interactive session;
@@ -466,6 +580,9 @@ impl Config {
     ///    (when set and not empty), then `smb.password` from the configuration file;
     /// 3. otherwise a clear error (never a prompt on a pipe).
     pub fn resolve_password(&self) -> Result<String, ConfigError> {
+        if let Some(password) = session_password().clone() {
+            return Ok(password);
+        }
         if std::io::stdin().is_terminal() {
             let target = SmbTarget::parse(&self.smb.url)?;
             loop {
@@ -501,12 +618,12 @@ mod tests {
 
     #[test]
     fn parse_smb_url() {
-        let t = SmbTarget::parse("smb://192.168.1.10/backup").unwrap();
-        assert_eq!(t.host, "192.168.1.10");
+        let t = SmbTarget::parse("smb://192.168.1.100/backup").unwrap();
+        assert_eq!(t.host, "192.168.1.100");
         assert_eq!(t.port, None);
         assert_eq!(t.share, "backup");
         assert!(t.folder.is_empty());
-        assert_eq!(t.service(), "//192.168.1.10/backup");
+        assert_eq!(t.service(), "//192.168.1.100/backup");
 
         let t = SmbTarget::parse("smb://nas.local:4450/home/laptop/").unwrap();
         assert_eq!(t.port, Some(4450));
@@ -591,7 +708,47 @@ mod tests {
             "backup":{"sources":["/tmp"]}}"#;
         let config: Config = serde_json::from_str(json).unwrap();
         assert_eq!(config.language, "en");
+        assert!(config.sealed.is_none());
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn sealed_configuration_validates_names_paths_and_keyring_attributes() {
+        let config = SealedConfig {
+            staging_dir: "~/sealed".into(),
+            secret: SealSecret::default(),
+            items: vec![SealedItem {
+                path: "~/.ssh".into(),
+                archive: "ssh.tar.gz.age".into(),
+            }],
+        };
+        assert!(config.validate().is_ok());
+        for name in [
+            "../ssh.tar.gz.age",
+            "ssh.enc",
+            "/ssh.tar.gz.age",
+            "bad\n.tar.gz.age",
+        ] {
+            let mut invalid = config.clone();
+            invalid.items[0].archive = name.into();
+            assert!(invalid.validate().is_err());
+        }
+        for path in ["", ".ssh", "/", "/tmp/../keys"] {
+            let mut invalid = config.clone();
+            invalid.items[0].path = path.into();
+            assert!(invalid.validate().is_err());
+        }
+        let mut duplicate = config.clone();
+        duplicate.items.push(duplicate.items[0].clone());
+        assert!(duplicate.validate().is_err());
+        for key in ["", "--help", "seal\n"] {
+            let mut invalid = config.clone();
+            invalid.secret.key = key.into();
+            assert!(invalid.validate().is_err());
+        }
+        let mut invalid = config;
+        invalid.secret.tool = "sh".into();
+        assert!(invalid.validate().is_err());
     }
 
     #[test]

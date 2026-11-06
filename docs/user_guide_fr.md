@@ -198,7 +198,7 @@ HeelonBackup prend en charge les variables d'environnement suivantes :
 
 #### `HEELONBACKUP_SMB_PASSWORD`
 
-Dans un **terminal interactif**, le mot de passe SMB est demandé via une **saisie masquée** au lancement de la connexion NAS — il n'est jamais lu depuis l'environnement, jamais stocké dans l'historique du shell, et jamais affiché :
+Dans un **terminal interactif**, le mot de passe SMB est demandé via une **saisie masquée** au lancement de la connexion NAS (la console interactive le demande une seule fois par session, en mémoire uniquement) — il n'est jamais lu depuis l'environnement, jamais stocké dans l'historique du shell, et jamais affiché :
 
 ```bash
 heelonbackup backup   # demande « SMB password for user@nas : » (saisie masquée)
@@ -272,6 +272,12 @@ heelonbackup config check
 
 Cela validera le fichier de configuration et signalera toute erreur.
 
+Pour voir les sources configurées (✓ trouvée sur le disque, ✗ absente) et les motifs d'exclusion :
+
+```bash
+heelonbackup config sources
+```
+
 ## 🎯 Utilisation de Base
 
 ### Réaliser votre première sauvegarde
@@ -288,6 +294,124 @@ Cela va :
 3. Transférer les fichiers vers votre NAS via SMB
 4. Vérifier l'intégrité des fichiers transférés
 5. Créer un manifest avec toutes les métadonnées de sauvegarde
+
+### Sceller les sources sensibles
+
+SMB3 chiffre le transport, pas les fichiers stockés sur le NAS. Configurez les
+[sources scellées](configuration.md#sealed-sources) pour protéger les clés SSH au
+repos. Retirez `~/.ssh` des sources ordinaires ; une source parente peut rester,
+car les chemins scellés sont automatiquement exclus des scans en clair.
+Le chiffrement age est intégré : aucun exécutable `age` à installer pour sceller.
+
+**Tout peut se faire depuis la console**, sans commandes de préparation :
+
+1. **Sceller les sources (`e`) → Ajouter/modifier une source scellée** :
+   choisissez `~/.ssh`, `ssh.tar.gz.age` et le staging proposé. Le plan est
+   affiché avant confirmation de l'enregistrement ; les autres sources restent
+   inchangées. Vous pouvez répéter pour ajouter d'autres éléments.
+2. **`e` → Enregistrer/remplacer la passphrase dans le trousseau** : confirmez
+   l'avertissement, puis saisissez deux fois la passphrase masquée. Elle n'est
+   jamais enregistrée dans le JSON. Le trousseau de session doit être déverrouillé.
+   Conservez une copie hors ligne ; remplacer le secret ne modifie pas les anciennes
+   archives, qui nécessitent toujours leur ancienne passphrase. Une variable
+   `HEELONBACKUP_SEAL_PASSPHRASE` définie reste prioritaire.
+3. **`e` → Sauvegarder uniquement les archives scellées** : dry-run obligatoire,
+   puis confirmation explicite lorsque la suppression NAS est terminée, et saisie
+   SMB masquée. Le scellement est automatique avant le transfert. Cette sauvegarde
+   est partielle et ne déclenche aucune rétention des backups complets.
+   Ce choix est aussi disponible dans **Lancer une sauvegarde**.
+
+Pour effacer les résumés des anciennes sauvegardes supprimées sur le NAS :
+**Statut / historique (`s`) → Effacer l'historique local** affiche les fichiers
+concernés puis demande confirmation (Non par défaut). Seuls les résumés locaux
+de l'environnement courant sont supprimés ; configuration, fichiers sources,
+liens, dossiers et backups NAS ne sont pas touchés. Le tableau de bord recharge
+l'historique après l'opération. Aucune connexion NAS n'est nécessaire.
+
+Enregistrez une **passphrase de récupération forte et unique** dans le trousseau
+de session. `secret-tool store` la lit sur stdin ; cet exemple Bash masque la
+saisie et ne la place pas dans les arguments des processus :
+
+```bash
+read -r -s -p 'Passphrase de scellement : ' seal_passphrase; printf '\n'
+printf '%s' "$seal_passphrase" | secret-tool store --label="heelonbackup seal" heelonbackup seal
+unset seal_passphrase
+heelonbackup seal --dry-run
+heelonbackup seal
+```
+
+Conservez aussi la passphrase dans un gestionnaire de mots de passe hors ligne ou
+un kit de récupération indépendant. Ne vérifiez pas le secret en affichant la sortie
+de `secret-tool lookup`. Cron peut manquer d'un trousseau déverrouillé ou d'un bus de
+session : déverrouillez le trousseau via votre session graphique, ou fournissez
+`HEELONBACKUP_SEAL_PASSPHRASE` via un fournisseur de secrets fiable. `secret-tool`
+n'a pas de sous-commande `unlock`. Un échec ou timeout bloque la sauvegarde ;
+aucun repli vers une sauvegarde en clair.
+
+Chaque vraie sauvegarde recrée toutes les archives chiffrées automatiquement.
+Le staging est créé en 0700, les archives en 0600 ; les sauvegardes complètes les
+incluent automatiquement, sans ajouter le staging aux sources. Les dry-runs ne
+lisent pas le trousseau, n'écrivent rien et ne peuvent pas estimer les nouvelles
+tailles d'archives. Une sauvegarde partielle inclut les archives seulement si ses
+chemins recouvrent des sources sensibles ou le staging.
+
+Pour récupérer, restaurez normalement le fichier chiffré, puis installez `age`
+(ou `rage`, compatible) sur la machine de récupération. Dans un **nouveau dossier
+privé**, déchiffrez entièrement avant d'extraire : ne transmettez pas une sortie
+partielle non authentifiée directement à tar.
+
+```bash
+heelonbackup restore BACKUP --target /tmp/restore \
+  --path /home/user/.local/share/heelonbackup/sealed/ssh.tar.gz.age
+umask 077
+mkdir /tmp/ssh-recovery
+# age demande la passphrase sauvegardée indépendamment
+age -d -o /tmp/ssh-recovery/ssh.tar.gz \
+  /tmp/restore/home/user/.local/share/heelonbackup/sealed/ssh.tar.gz.age &&
+  tar xzf /tmp/ssh-recovery/ssh.tar.gz -C /tmp/ssh-recovery
+```
+
+Inspectez le `.ssh` récupéré avant de le copier chez vous ; supprimez l'archive de
+récupération en clair après usage. **Les anciens backups NAS en clair ne sont pas
+modifiés.** Supprimez ces copies (snapshots et corbeilles compris) et renouvelez les
+clés privées exposées si le NAS ou ses comptes ont pu être compromis.
+
+### Rechercher les anciennes clés privées sur un partage monté
+
+```bash
+just scan-cles-nas /mnt/beestation
+# Analyse de toutes les tailles (plus lent) :
+MAX_BYTES=0 just scan-cles-nas /mnt/beestation
+# Rapport sans barre de progression dans le fichier :
+just scan-cles-nas /mnt/beestation > rapport-cles.txt
+```
+
+Le script exige Python 3.15.0 minimum, avec `python3.15` disponible dans le PATH,
+sans paquet supplémentaire. Les tests utilisent explicitement Python 3.15. Il ne supprime
+rien et n'affiche jamais le contenu des fichiers. Il inventorie un seul système de
+fichiers, sans suivre les liens, puis lit les fichiers par blocs, y compris les
+fichiers binaires. La barre sur stderr affiche la progression en octets, le nombre
+de fichiers et de détections, la durée et une estimation du temps restant ; elle
+n'apparaît que sur un terminal. L'inventaire a un indicateur sans pourcentage,
+puisque le total n'est pas encore connu.
+
+Le chemin doit être un dossier local du partage **déjà monté**, pas une URL
+`smb://`. Les liens et montages imbriqués ignorés sont affichés : lancez une
+recherche sur chaque véritable cible. Un inventaire sans fichier retourne **2**
+et signale une recherche incomplète, même si le dossier local existe.
+
+`NOM_SUSPECT` signale un nom à examiner, pas une preuve de fuite. `CLE_PRIVEE`
+signale un marqueur de clé privée (OpenSSH, PEM, PuTTY), pas nécessairement une
+clé appartenant à votre compte. Les chemins sont encodés comme chaînes JSON afin
+de préserver espaces et retours à la ligne sans injecter de commandes terminal.
+
+Codes de sortie : **0** aucun marqueur dans les fichiers examinés, **1** marqueurs
+trouvés, **2** recherche incomplète ou erreur, **130** interruption. Le plafond
+par défaut est de 10 Mio, borne incluse ; les fichiers plus grands rendent la
+recherche incomplète. `MAX_BYTES=0` retire ce plafond. Les erreurs sont affichées
+explicitement. Les archives ne sont pas décompressées, les fichiers chiffrés ne
+sont pas déchiffrés ; corbeilles, snapshots et autres partages sont à vérifier
+séparément. Même un résultat sans marqueur ne garantit donc pas l'absence de copies.
 
 ### Suivi de la progression
 
@@ -337,6 +461,12 @@ heelonbackup list
 
 Cela montre toutes les sauvegardes avec leur statut, taille et horodatage.
 
+Pour seulement vérifier que le NAS est joignable (aucun mot de passe nécessaire) :
+
+```bash
+heelonbackup ping   # code de sortie 0 = en ligne, 1 = hors ligne
+```
+
 ### Vérification d'une sauvegarde
 
 Pour vous assurer que votre sauvegarde est complète et intacte :
@@ -376,27 +506,50 @@ Remplacez `20261007_143022` par le nom de votre sauvegarde (horodatage). Sans `-
 
 ## 🖥️ Mode Interactif
 
-Exécuter `heelonbackup` **sans sous-commande** ouvre une console interactive (dialogues par menus, pas d'interface plein écran) :
+Exécuter `heelonbackup` **sans sous-commande** ouvre la console interactive, un tableau de bord plein écran :
 
 ```text
-? HeelonBackup — que souhaitez-vous faire ? ›
-❯ Lancer un backup
-  Statut
-  Vérifier un backup
-  Restaurer
-  Configuration
-  Langue / Language
-  Quitter
+ HeelonBackup v0.1.0   PROD                                     2026-11-06 14:32:05    EN | FR
+╭ NAS ─────────────────────────────────────╮╭ Dernière sauvegarde ───────────────────────────╮
+│ ● EN LIGNE  192.168.1.100:445 · 3 ms     ││ Statut       Terminée                          │
+│ Partage      //192.168.1.100/backup      ││ Date         2026-11-05 22:00 (il y a 16 h)    │
+│ Dossier      laptop/heelonbackup         ││ Taille       12.40 GiB · 41238 fichiers        │
+│ Sources      (3) ~/Documents, ~/Pictures,││ Durée        18m 02s                           │
+│ Rétention    7                           ││                                                │
+│ Chiffrement  activé                      ││                                                │
+╰──────────────────────────────────────────╯╰────────────────────────────────────────────────╯
+╭ Actions ──────────────────╮╭ Terminal — ⠹ En cours : Lancer une sauvegarde ────────────────╮
+│▶ b Lancer une sauvegarde  ││14:30:04   Files:  41238 (12.40 GiB)                           │
+│  s Statut / historique    ││14:30:05 Connected to //192.168.1.100/backup                   │
+│  n Sauvegardes sur le NAS ││                                                               │
+│  v Vérifier une sauvegarde││                                                               │
+│  r Restaurer              ││                                                               │
+│  c Configuration          ││                                                               │
+│  L Langue / Language      ││ Uploading 48% · 5.95 GiB/12.40 GiB · 85 MiB/s · ETA 1m 17s    │
+│  q Quitter                ││                                                               │
+╰───────────────────────────╯╰───────────────────────────────────────────────────────────────╯
+ Ctrl-C interrompre · Tab changer de panneau
 ```
 
-- **Lancer un backup** : sources configurées ou chemins précis ; un **dry-run est toujours proposé d'abord**, et un vrai transfert ne démarre qu'après une confirmation explicite.
-- **Statut** : résumé du dernier backup, vue détaillée ou historique complet (même affichage que `heelonbackup status`).
+- **En-tête** : version, environnement (`DEV` en rouge quand `HEELONBACKUP_ENV=dev`, `PROD` sinon), date et heure en direct, langue active.
+- **Panneau NAS** : `EN LIGNE` / `HORS LIGNE` avec le temps de réponse, vérifié en arrière-plan toutes les 15 secondes et après chaque opération (connexion TCP au port SMB : aucun mot de passe nécessaire, même vérification que `heelonbackup ping`), plus le partage, le dossier, les sources, la rétention et le chiffrement issus de la configuration.
+- **Panneau Dernière sauvegarde** : statut, date et ancienneté, taille, nombre de fichiers et durée de la dernière sauvegarde faite depuis cet ordinateur ; le dernier succès s'il diffère, et un avertissement au-delà de 7 jours.
+- **Panneau Terminal** : la sortie de l'opération en cours, horodatée, et sa progression en direct (pourcentage, tailles, débit, temps restant). Voir « Focus » ci-dessous pour la faire défiler.
+- **Actions** : choix avec `↑` `↓` + `Entrée`, ou via la lettre de raccourci affichée devant chaque entrée.
+- **Focus** : les flèches agissent sur le panneau à la bordure épaisse cyan. `Tab` (ou `→` / `←`) passe d'Actions à Terminal. Dans le terminal, `↑` `↓` défilent ligne par ligne, `PgPréc` / `PgSuiv` par page, `Début` / `Fin` vont en haut / en bas, et `Échap` revient au menu ; les lettres de raccourci restent actives. Quand la sortie d'une opération ne tient pas (ex. la configuration), le terminal prend le focus et l'affiche depuis sa première ligne.
+
+Actions :
+
+- **Lancer un backup** : les sources configurées sont d'abord listées (✓ trouvée, ✗ absente, plus le nombre de motifs d'exclusion), puis on choisit entre elles (sauvegarde complète, applique la rétention) et des fichiers/dossiers précis (sauvegarde partielle, ne déclenche jamais la rétention) ; un **dry-run est toujours proposé d'abord**, et un vrai transfert ne démarre qu'après une confirmation explicite.
+- **Statut / historique** : résumé, vue détaillée, historique complet, ou suppression confirmée des résumés locaux uniquement.
+- **Sauvegardes sur le NAS** : toutes les sauvegardes stockées sur le NAS (même affichage que `heelonbackup list`).
 - **Vérifier un backup** : choix d'un backup sur le NAS (ou du dernier utilisable), avec vérification approfondie SHA-256 optionnelle.
 - **Restaurer** : choix d'un backup, d'un dossier cible (vide = emplacements d'origine) et de filtres de chemins optionnels ; un dry-run est toujours exécuté d'abord.
-- **Configuration** : afficher le fichier de configuration, afficher son chemin ou l'ouvrir dans `$EDITOR`.
-- **Langue / Language** : bascule la console entre anglais et français pour la session ; le choix est enregistré dans le fichier de configuration (`"language" : "en"` ou `"fr"`, défaut `"en"`).
+- **Sceller les sources** (`e`) : création locale d'archives, sauvegarde des archives uniquement (dry-run obligatoire), ajout/modification d'une source, ou enregistrement masqué de la passphrase dans le trousseau. Chaque écriture/transfert demande confirmation.
+- **Configuration** : affichage, sources/exclusions, validation, chemin, éditeur externe, ou configuration guidée d'une source scellée.
+- **Langue / Language** (`L`) : bascule la console entre anglais et français ; le choix est enregistré dans le fichier de configuration (`"language" : "en"` ou `"fr"`, défaut `"en"`). La sortie des opérations dans le panneau Terminal reste en anglais, comme en CLI.
 
-Chaque flux utilise le même moteur que les commandes CLI : affichages, barres de progression et codes de sortie sont identiques. Le mot de passe SMB est demandé via une saisie masquée et n'est jamais stocké ni affiché ; `HEELONBACKUP_SMB_PASSWORD` n'est utilisée que pour les runs non interactifs. `Échap` / `q` / `Ctrl-C` quittent proprement le dialogue courant ; `Ctrl-C` pendant un transfert l'interrompt (code de sortie 130, comme en CLI). Toute sous-commande conserve le comportement CLI classique.
+Chaque flux utilise le même moteur que les commandes CLI : la sortie affichée dans le panneau Terminal est identique à celle de la CLI. Le mot de passe SMB est demandé **une seule fois par session** dans une boîte de saisie masquée (jamais affiché), gardé en mémoire uniquement et oublié à la fermeture de la console ou si le NAS le refuse ; `HEELONBACKUP_SMB_PASSWORD` n'est utilisée que pour les runs non interactifs. Dans une boîte de dialogue, `Échap` / `Ctrl-C` annulent et reviennent en arrière. Pendant une opération, `Ctrl-C` l'interrompt et le tableau de bord reste ouvert ; sinon `q`, `Échap` ou `Ctrl-C` quittent (code de sortie 0). Sans terminal, la console refuse de démarrer (code de sortie 1). Toute sous-commande conserve le comportement CLI classique.
 
 ## 🚀 Fonctionnalités Avancées
 

@@ -17,10 +17,24 @@ fn use_configured_sources(index: usize) -> bool {
 pub(crate) async fn run(s: &'static Strings, config_path: &Path) -> Result<Exit> {
     let config = Config::load(config_path)?;
 
-    // 1. what to back up
-    let Some(source) = select(s.backup_source_prompt, &s.backup_source_options, 0).await? else {
+    // 1. what to back up: the configured sources are listed first, so the choice is informed
+    crate::service::config::print_sources(&config, false);
+    let configured = format!(
+        "{} ({})",
+        s.backup_source_options[0],
+        config.backup.sources.len()
+    );
+    let options = [
+        configured.as_str(),
+        s.backup_source_options[1],
+        s.backup_source_options[2],
+    ];
+    let Some(source) = select(s.backup_source_prompt, &options, 0).await? else {
         return Ok(Exit::Success); // Esc / Ctrl-C: back to the menu
     };
+    if source == 2 {
+        return super::seal::backup_only(s, config_path).await;
+    }
     let paths = if use_configured_sources(source) {
         Vec::new()
     } else {
@@ -59,6 +73,9 @@ pub(crate) async fn run(s: &'static Strings, config_path: &Path) -> Result<Exit>
     // 3. the real backup only runs after an explicit confirmation
     match confirm(s.backup_run_prompt, s.yes, s.no, false).await? {
         Some(true) => {
+            if !super::ensure_password(s, &config).await? {
+                return Ok(Exit::Success); // password dialog cancelled
+            }
             backup::run(
                 &config,
                 BackupRequest {

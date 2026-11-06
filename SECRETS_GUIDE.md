@@ -2,6 +2,18 @@
 
 ## 🔒 Best Practices for Secure Configuration
 
+For SSH keys and other sensitive backup sources, use
+[sealed sources](docs/configuration.md#sealed-sources) and follow the
+[setup and recovery procedure](docs/user_guide.md#sealing-sensitive-sources).
+The seal passphrase comes from the session keyring or
+`HEELONBACKUP_SEAL_PASSPHRASE`, independently of the SMB password. Keep an offline
+recovery copy; never print keyring lookup output or pass a secret in command arguments.
+Only ciphertext is staged, and failure blocks backup before NAS access.
+Use the console's **Seal sensitive sources → Store/replace recovery passphrase in
+keyring**, or `heelonbackup seal --set-passphrase`, for masked setup without shell
+variables. Replacing the keyring entry does not re-encrypt old archives; retain
+their original passphrase. A seal-passphrase environment override still wins.
+
 HeelonBackup provides multiple ways to configure your SMB connection securely. **Never commit credentials to git.**
 
 **Password resolution order:** in an interactive terminal, the SMB password is asked with a **masked prompt** when the NAS connection starts (never read from the environment, never stored in the shell history). The `HEELONBACKUP_SMB_PASSWORD` environment variable is used **only for non-interactive runs** (scripts, cron, `sudo` without a tty) and only when set and not empty.

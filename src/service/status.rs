@@ -6,11 +6,13 @@
 use super::{Exit, remote};
 use crate::config::{Config, SmbTarget};
 use crate::error::Result;
+use crate::storage::smb_client::Reachability;
 use crate::storage::{BackupManifest, BackupStatus, LocalHistory};
 use crate::ui;
 use chrono::Local;
 
-const STALE_DAYS: i64 = 7;
+/// A last successful backup older than this is flagged as stale
+pub(crate) const STALE_DAYS: i64 = 7;
 
 pub fn status(all: bool, detailed: bool) -> Exit {
     let history = LocalHistory::open().load_all();
@@ -26,6 +28,22 @@ pub fn status(all: bool, detailed: bool) -> Exit {
         print_history(&history);
     }
     exit
+}
+
+/// Is the NAS reachable? Online = success, offline = failure (no password needed)
+pub async fn ping(config: &Config) -> Result<Exit> {
+    let (target, state) = remote::reachability(config).await?;
+    let address = remote::probed_address(&target);
+    Ok(match state {
+        Reachability::Online(latency) => {
+            ui::say!("🟢 NAS online: {address} ({} ms)", latency.as_millis());
+            Exit::Success
+        }
+        Reachability::Offline(reason) => {
+            ui::say!("🔴 NAS offline: {address} ({reason})");
+            Exit::Failure
+        }
+    })
 }
 
 pub async fn list(config: &Config) -> Result<Exit> {
@@ -52,35 +70,30 @@ pub async fn list(config: &Config) -> Result<Exit> {
 }
 
 // ---- Display ----
-// TODO(console): all the printing of this module is grouped in the small
-// functions below. In phase 3 the display will be passed as a parameter of
-// run() so the console can render its own output; until then they keep the
-// exact CLI output.
+// Every line goes through `ui::say!`: printed as-is by the CLI, shown in the
+// terminal pane by the console.
 
-// TODO(console)
 fn print_no_history() {
-    println!("No backup recorded on this computer yet. Run `heelonbackup backup`.");
+    ui::say!("No backup recorded on this computer yet. Run `heelonbackup backup`.");
 }
 
-// TODO(console)
 fn print_last_backup(m: &BackupManifest, detailed: bool) {
-    println!("📊 Last backup");
-    println!("{}", ui::RULE);
+    ui::say!("📊 Last backup");
+    ui::say!("{}", ui::RULE);
     print_details(m, detailed);
-    println!("{}", ui::RULE);
+    ui::say!("{}", ui::RULE);
 }
 
 /// Verdict on the recorded backups (none successful, stale, ...); also returns the exit code
-// TODO(console)
 fn print_verdict(history: &[BackupManifest], last: &BackupManifest) -> Exit {
     let last_ok = history.iter().find(|m| m.status.is_usable());
     match last_ok {
         None => {
-            println!("❌ No successful backup recorded.");
+            ui::say!("❌ No successful backup recorded.");
             Exit::Failure
         }
         Some(ok) if (Local::now() - ok.started_at).num_days() >= STALE_DAYS => {
-            println!(
+            ui::say!(
                 "⚠️  The last successful backup is {} old ({}). Time for a new one!",
                 ui::age(ok.started_at).trim_end_matches(" ago"),
                 ok.name
@@ -88,7 +101,7 @@ fn print_verdict(history: &[BackupManifest], last: &BackupManifest) -> Exit {
             Exit::Warnings
         }
         Some(ok) if ok.name != last.name => {
-            println!(
+            ui::say!(
                 "ℹ️  Last successful backup: {} ({})",
                 ok.name,
                 ui::age(ok.started_at)
@@ -100,16 +113,14 @@ fn print_verdict(history: &[BackupManifest], last: &BackupManifest) -> Exit {
     }
 }
 
-// TODO(console)
 fn print_history(history: &[BackupManifest]) {
-    println!();
-    println!("📚 History ({} backups)", history.len());
+    ui::say!();
+    ui::say!("📚 History ({} backups)", history.len());
     print_table(history);
 }
 
-// TODO(console)
 fn print_details(m: &BackupManifest, detailed: bool) {
-    println!(
+    ui::say!(
         "  Status:      {} {}{}",
         m.status.icon(),
         m.status.label(),
@@ -119,19 +130,19 @@ fn print_details(m: &BackupManifest, detailed: bool) {
             ""
         }
     );
-    println!("  Backup:      {}", m.name);
-    println!(
+    ui::say!("  Backup:      {}", m.name);
+    ui::say!(
         "  Date:        {} ({})",
         ui::date(m.started_at),
         ui::age(m.started_at)
     );
-    println!("  Location:    {}/{}", m.server, m.backup_path);
-    println!(
+    ui::say!("  Location:    {}/{}", m.server, m.backup_path);
+    ui::say!(
         "  Sources:     {}{}",
         m.sources.join(", "),
         if m.partial { " (specific paths)" } else { "" }
     );
-    println!(
+    ui::say!(
         "  Saved:       {} files ({})",
         m.file_count,
         ui::bytes(m.total_size)
@@ -141,33 +152,33 @@ fn print_details(m: &BackupManifest, detailed: bool) {
             .throughput()
             .map(|r| format!(" — {}", ui::rate(r)))
             .unwrap_or_default();
-        println!("  Duration:    {}{rate}", ui::duration(d));
+        ui::say!("  Duration:    {}{rate}", ui::duration(d));
     }
     if m.failed_count > 0 {
-        println!("  Failed:      {}", m.failed_count);
+        ui::say!("  Failed:      {}", m.failed_count);
     }
     if m.skipped_count > 0 {
-        println!("  Skipped:     {}", m.skipped_count);
+        ui::say!("  Skipped:     {}", m.skipped_count);
     }
     if let Some(notes) = &m.notes {
-        println!("  Note:        {notes}");
+        ui::say!("  Note:        {notes}");
     }
     if detailed {
         if !m.failed.is_empty() {
-            println!("  Failed files:");
+            ui::say!("  Failed files:");
             ui::print_limited(&m.failed, usize::MAX, |i| {
                 format!("{}: {}", i.path, i.reason)
             });
         }
         if !m.skipped.is_empty() {
-            println!("  Skipped files:");
+            ui::say!("  Skipped files:");
             ui::print_limited(&m.skipped, usize::MAX, |i| {
                 format!("{}: {}", i.path, i.reason)
             });
         }
         let shown = m.failed.len().max(m.skipped.len()) as u64;
         if shown < m.failed_count.max(m.skipped_count) {
-            println!(
+            ui::say!(
                 "  (full lists are in {}/manifest.json on the NAS)",
                 m.backup_path
             );
@@ -175,14 +186,17 @@ fn print_details(m: &BackupManifest, detailed: bool) {
     }
 }
 
-// TODO(console)
 fn print_table(list: &[BackupManifest]) {
-    println!(
+    ui::say!(
         "  {:<17} {:<24} {:>9} {:>10} {:>11}  HOST",
-        "NAME", "STATUS", "FILES", "SIZE", "DURATION"
+        "NAME",
+        "STATUS",
+        "FILES",
+        "SIZE",
+        "DURATION"
     );
     for m in list {
-        println!(
+        ui::say!(
             "  {:<17} {:<24} {:>9} {:>10} {:>11}  {}",
             m.name,
             format!(
@@ -199,14 +213,12 @@ fn print_table(list: &[BackupManifest]) {
     }
 }
 
-// TODO(console)
 fn print_no_backups(location: &str) {
-    println!("No backup found in {location}.");
+    ui::say!("No backup found in {location}.");
 }
 
-// TODO(console)
 fn print_list_header(count: usize, location: &str, retention: usize) {
-    println!(
+    ui::say!(
         "🗄  {count} backup(s) in {location} (retention: {})",
         match retention {
             0 => "keep all".to_string(),
@@ -215,9 +227,8 @@ fn print_list_header(count: usize, location: &str, retention: usize) {
     );
 }
 
-// TODO(console)
 fn print_incomplete(incomplete: &[(String, Option<BackupManifest>)]) {
     for (name, _) in incomplete {
-        println!("  {name:<17} ❓ no summary (interrupted or not created by this tool)");
+        ui::say!("  {name:<17} ❓ no summary (interrupted or not created by this tool)");
     }
 }
