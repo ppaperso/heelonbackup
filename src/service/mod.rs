@@ -7,6 +7,7 @@
 //! console can render its own output.
 
 pub(crate) mod backup;
+pub(crate) mod config;
 pub(crate) mod remote;
 pub(crate) mod restore;
 pub(crate) mod status;
