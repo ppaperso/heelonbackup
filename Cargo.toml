@@ -56,7 +56,7 @@ rpassword = "7.3"
 
 # statvfs / access / hostname
 nix = { version = "0.31", features = ["fs", "hostname"] }
-dialoguer = { version = "0.12.0", default-features = false, features = ["password"] }
+dialoguer = { version = "0.12.0", default-features = false }
 
 [profile.release]
 opt-level = 3
