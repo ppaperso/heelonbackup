@@ -47,6 +47,9 @@ pub(crate) async fn run(s: &'static Strings, config_path: &Path) -> Result<Exit>
                 paths: paths.clone(),
                 dry_run: true,
                 list,
+                // technical overrides (workers, max_file_size) stay CLI-only: None = config values
+                workers: None,
+                max_file_size: None,
             },
         )
         .await?;
@@ -61,6 +64,8 @@ pub(crate) async fn run(s: &'static Strings, config_path: &Path) -> Result<Exit>
                     paths,
                     dry_run: false,
                     list: false,
+                    workers: None,
+                    max_file_size: None,
                 },
             )
             .await

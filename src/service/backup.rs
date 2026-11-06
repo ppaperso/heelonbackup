@@ -27,6 +27,22 @@ pub struct BackupRequest {
     pub dry_run: bool,
     /// With dry_run: print every file that would be backed up
     pub list: bool,
+    /// Override `backup.workers` for this run (None = use the configuration)
+    pub workers: Option<usize>,
+    /// Override `backup.max_file_size` for this run (None = use the configuration)
+    pub max_file_size: Option<u64>,
+}
+
+/// Effective configuration for a run: the request overrides win over the configuration
+fn effective_config(config: &Config, request: &BackupRequest) -> Config {
+    let mut config = config.clone();
+    if let Some(workers) = request.workers {
+        config.backup.workers = workers;
+    }
+    if let Some(max_file_size) = request.max_file_size {
+        config.backup.max_file_size = max_file_size;
+    }
+    config
 }
 
 fn resolve_sources(config: &Config, request: &BackupRequest) -> Result<Vec<PathBuf>> {
@@ -77,9 +93,11 @@ async fn scan_sources(config: &Config, sources: Vec<PathBuf>) -> Result<ScanRepo
 }
 
 pub async fn run(config: &Config, request: BackupRequest) -> Result<Exit> {
-    let sources = resolve_sources(config, &request)?;
+    // request overrides (workers, max_file_size) apply to the whole run
+    let config = effective_config(config, &request);
+    let sources = resolve_sources(&config, &request)?;
     let started = Instant::now();
-    let report = scan_sources(config, sources.clone()).await?;
+    let report = scan_sources(&config, sources.clone()).await?;
     let history = LocalHistory::open();
     let base = config.remote_base()?;
     let target = SmbTarget::parse(&config.smb.url)?;
@@ -109,7 +127,7 @@ pub async fn run(config: &Config, request: BackupRequest) -> Result<Exit> {
         return Ok(Exit::Success);
     }
 
-    let client = remote::connect(config).await?;
+    let client = remote::connect(&config).await?;
     print_connected(&target, config.smb.encrypt);
 
     let backup_path = format!("{base}/{name}");
@@ -127,7 +145,7 @@ pub async fn run(config: &Config, request: BackupRequest) -> Result<Exit> {
 
     // Backups of specific paths are partial: they must never trigger the deletion of full backups
     manifest.partial = !request.paths.is_empty();
-    let exit = execute(config, &client, &history, &mut manifest, &report).await;
+    let exit = execute(&config, &client, &history, &mut manifest, &report).await;
     if let Err(e) = &exit {
         manifest.fail(e.to_string());
         save_history(&history, &manifest);
@@ -501,6 +519,31 @@ mod tests {
         m.status = status;
         m.partial = partial;
         (name.to_string(), Some(m))
+    }
+
+    #[test]
+    fn request_overrides_win_over_config() {
+        let mut config = Config::default();
+        config.backup.workers = 4;
+        config.backup.max_file_size = 1024;
+        let request = BackupRequest {
+            workers: Some(2),
+            max_file_size: Some(2048),
+            ..Default::default()
+        };
+        let effective = effective_config(&config, &request);
+        assert_eq!(effective.backup.workers, 2);
+        assert_eq!(effective.backup.max_file_size, 2048);
+    }
+
+    #[test]
+    fn config_values_used_when_no_override() {
+        let mut config = Config::default();
+        config.backup.workers = 3;
+        config.backup.max_file_size = 999;
+        let effective = effective_config(&config, &BackupRequest::default());
+        assert_eq!(effective.backup.workers, 3);
+        assert_eq!(effective.backup.max_file_size, 999);
     }
 
     #[test]

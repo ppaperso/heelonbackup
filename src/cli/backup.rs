@@ -18,6 +18,14 @@ pub struct BackupArgs {
     /// With --dry-run: print every file that would be backed up
     #[arg(short, long, requires = "dry_run")]
     pub list: bool,
+
+    /// Number of parallel SMB sessions for this backup (overrides backup.workers)
+    #[arg(short = 'w', long, value_name = "N", value_parser = clap::value_parser!(u16).range(1..=16))]
+    pub workers: Option<u16>,
+
+    /// Maximum file size in bytes, 0 = unlimited (overrides backup.max_file_size)
+    #[arg(long, value_name = "BYTES", value_parser = clap::value_parser!(u64))]
+    pub max_file_size: Option<u64>,
 }
 
 impl From<BackupArgs> for service::backup::BackupRequest {
@@ -26,6 +34,8 @@ impl From<BackupArgs> for service::backup::BackupRequest {
             paths: args.paths,
             dry_run: args.dry_run,
             list: args.list,
+            workers: args.workers.map(usize::from),
+            max_file_size: args.max_file_size,
         }
     }
 }
