@@ -59,6 +59,8 @@ pub(crate) struct Strings {
     pub stub: &'static str,
     pub status_prompt: &'static str,
     pub status_options: [&'static str; 3],
+    pub config_prompt: &'static str,
+    pub config_options: [&'static str; 3],
 }
 
 pub(crate) static EN: Strings = Strings {
@@ -78,6 +80,12 @@ pub(crate) static EN: Strings = Strings {
         "Last backup (detailed)",
         "Full history",
     ],
+    config_prompt: "Configuration: what do you want to do?",
+    config_options: [
+        "Show the configuration",
+        "Configuration file path",
+        "Open in $EDITOR",
+    ],
 };
 
 pub(crate) static FR: Strings = Strings {
@@ -96,6 +104,12 @@ pub(crate) static FR: Strings = Strings {
         "Résumé du dernier backup",
         "Dernier backup (détaillé)",
         "Historique complet",
+    ],
+    config_prompt: "Configuration : que voulez-vous faire ?",
+    config_options: [
+        "Voir la configuration",
+        "Chemin du fichier de configuration",
+        "Ouvrir dans $EDITOR",
     ],
 };
 
@@ -119,6 +133,7 @@ mod tests {
             assert!(!s.menu_prompt.is_empty());
             assert!(!s.stub.is_empty());
             assert_eq!(s.status_options.len(), 3);
+            assert_eq!(s.config_options.len(), 3);
         }
         assert_ne!(Lang::En.strings().menu_quit, Lang::Fr.strings().menu_quit);
         assert_ne!(
