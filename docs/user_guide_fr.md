@@ -198,14 +198,17 @@ HeelonBackup prend en charge les variables d'environnement suivantes :
 
 #### `HEELONBACKUP_SMB_PASSWORD`
 
-Le mot de passe SMB peut être fourni via cette variable d'environnement au lieu de le stocker dans le fichier de configuration :
+Dans un **terminal interactif**, le mot de passe SMB est demandé via une **saisie masquée** au lancement de la connexion NAS — il n'est jamais lu depuis l'environnement, jamais stocké dans l'historique du shell, et jamais affiché :
 
 ```bash
-# Définir le mot de passe pour la session en cours
-export HEELONBACKUP_SMB_PASSWORD="votre_mot_de_passe_secure"
+heelonbackup backup   # demande « SMB password for user@nas : » (saisie masquée)
+```
 
-# Exécuter la sauvegarde avec le mot de passe depuis l'environnement
-heelonbackup backup
+**Runs non interactifs uniquement** (scripts, cron, `sudo` sans tty) : fournir le mot de passe via la variable d'environnement :
+
+```bash
+# Run non interactif (script/cron) avec le mot de passe depuis l'environnement
+HEELONBACKUP_SMB_PASSWORD="votre_mot_de_passe_secure" heelonbackup backup
 ```
 
 Ceci est la méthode **recommandée** pour fournir le mot de passe, car elle est plus sécurisée que de le stocker dans un fichier de configuration.
@@ -392,7 +395,7 @@ Exécuter `heelonbackup` **sans sous-commande** ouvre une console interactive (d
 - **Configuration** : afficher le fichier de configuration, afficher son chemin ou l'ouvrir dans `$EDITOR`.
 - **Langue / Language** : bascule la console entre anglais et français pour la session ; le choix est enregistré dans le fichier de configuration (`"language" : "en"` ou `"fr"`, défaut `"en"`).
 
-Chaque flux utilise le même moteur que les commandes CLI : affichages, barres de progression et codes de sortie sont identiques. Le mot de passe SMB est demandé via une saisie masquée (ou lu depuis `HEELONBACKUP_SMB_PASSWORD`) et n'est jamais stocké ni affiché. `Échap` / `q` / `Ctrl-C` quittent proprement le dialogue courant ; `Ctrl-C` pendant un transfert l'interrompt (code de sortie 130, comme en CLI). Toute sous-commande conserve le comportement CLI classique.
+Chaque flux utilise le même moteur que les commandes CLI : affichages, barres de progression et codes de sortie sont identiques. Le mot de passe SMB est demandé via une saisie masquée et n'est jamais stocké ni affiché ; `HEELONBACKUP_SMB_PASSWORD` n'est utilisée que pour les runs non interactifs. `Échap` / `q` / `Ctrl-C` quittent proprement le dialogue courant ; `Ctrl-C` pendant un transfert l'interrompt (code de sortie 130, comme en CLI). Toute sous-commande conserve le comportement CLI classique.
 
 ## 🚀 Fonctionnalités Avancées
 
@@ -522,7 +525,7 @@ error: SMB authentication failed: session setup failed
 **Solution :**
 - Vérifiez votre nom d'utilisateur et mot de passe
 - Vérifiez si l'utilisateur a accès au partage
-- Essayez en utilisant la variable d'environnement :
+- Dans un terminal, le mot de passe est demandé masqué au lancement ; pour les scripts/cron, utilisez la variable d'environnement :
 
 ```bash
 export HEELONBACKUP_SMB_PASSWORD="votre_mot_de_passe"
@@ -618,7 +621,7 @@ smbclient //nas-ip/share -U votre_utilisateur -c "ls"
 
 ### Sécurité du Mot de Passe
 
-**Meilleure Pratique** : Utilisez toujours la variable d'environnement pour votre mot de passe SMB au lieu de le stocker dans le fichier de configuration :
+**Meilleure Pratique** : dans un terminal, le mot de passe SMB est demandé via une saisie masquée — il n'est jamais stocké sur disque ni dans l'historique du shell. Pour les runs non interactifs (scripts, cron), utilisez la variable d'environnement, jamais un mot de passe en dur :
 
 ```bash
 export HEELONBACKUP_SMB_PASSWORD="votre_mot_de_passe"

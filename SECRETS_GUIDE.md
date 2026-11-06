@@ -4,9 +4,11 @@
 
 HeelonBackup provides multiple ways to configure your SMB connection securely. **Never commit credentials to git.**
 
+**Password resolution order:** in an interactive terminal, the SMB password is asked with a **masked prompt** when the NAS connection starts (never read from the environment, never stored in the shell history). The `HEELONBACKUP_SMB_PASSWORD` environment variable is used **only for non-interactive runs** (scripts, cron, `sudo` without a tty) and only when set and not empty.
+
 ---
 
-## 📁 Option 1: Environment Variables (Recommended)
+## 📁 Option 1: Environment Variables (non-interactive runs)
 
 ### Create your `.env` file
 
@@ -118,6 +120,8 @@ HEELONBACKUP_SMB_WORKGROUP=WORKGROUP
 ```bash
 source .env
 heelonbackup backup
+# note: in a terminal the password is asked masked instead of being read from .env;
+# the environment variable only applies to non-interactive runs (scripts, cron)
 ```
 
 ---

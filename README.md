@@ -136,7 +136,7 @@ Close Firefox before backing up its profile to avoid inconsistent databases.
 ### Environment Variables
 
 ```bash
-# SMB password (preferred over configuration file)
+# SMB password for NON-interactive runs only (scripts, cron); in a terminal it is asked masked at launch
 export HEELONBACKUP_SMB_PASSWORD="your_password"
 
 # Log level (debug, info, warn, error)
@@ -282,7 +282,7 @@ heelonbackup completions fish > ~/.config/fish/completions/heelonbackup.fish
 
 - **Encryption**: Support for SMB3 traffic encryption
 - **Password Security**: No password storage in logs or command line
-- **Environment Variables**: Password can be passed via `HEELONBACKUP_SMB_PASSWORD`
+- **Masked password prompt**: in a terminal the SMB password is typed hidden at launch (never stored); `HEELONBACKUP_SMB_PASSWORD` is only for non-interactive runs, and the password is never passed on a command line
 - **Verification**: SHA-256 checksums for every backed up file
 - **Permissions**: Preserves original Unix permissions
 
@@ -361,7 +361,7 @@ error: SMB authentication failed: session setup failed
 ```
 **Solution**:
 - Verify username and password
-- Try with environment variable: `export HEELONBACKUP_SMB_PASSWORD="your_password"`
+- In a terminal the password is asked masked at launch; for scripts/cron use the env var: `export HEELONBACKUP_SMB_PASSWORD="your_password"`
 
 ### Missing configuration
 ```

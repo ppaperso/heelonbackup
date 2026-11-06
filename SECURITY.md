@@ -106,16 +106,17 @@ HeelonBackup uses the system `smbclient` for SMB operations. Security considerat
 
 ### Password Storage
 
-- **Recommended**: Use `HEELONBACKUP_SMB_PASSWORD` environment variable
-- **Alternative**: Store in configuration file (less secure)
-- **Not Recommended**: Never hardcode passwords in scripts or command lines
+- **Recommended (interactive)**: the password is asked with a **masked prompt** when the NAS connection starts — nothing is stored in the shell history, the environment or on disk
+- **Non-interactive runs only** (scripts, cron, `sudo` without a tty): use the `HEELONBACKUP_SMB_PASSWORD` environment variable (when set and not empty)
+- **Alternative (non-interactive)**: store in the configuration file (`smb.password`, file mode 600)
+- **Never**: hardcoded passwords in scripts, command lines, logs or error messages — the password is passed to `smbclient` only through its `PASSWD` environment variable, never as a command-line argument
 
 ## Security Features
 
 HeelonBackup includes the following security features:
 
 1. **SHA-256 Checksums**: Every file is verified using cryptographic hashes
-2. **Secure Password Handling**: Passwords can be passed via environment variables
+2. **Secure Password Handling**: masked prompt in interactive sessions (environment variable only for non-interactive runs); the password never appears on a command line, in logs or in errors
 3. **SMB3 Encryption**: Support for encrypted SMB connections
 4. **No Plaintext Passwords**: Passwords are never logged or displayed in plaintext
 5. **Minimal Dependencies**: Reduced attack surface through minimal external dependencies

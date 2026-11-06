@@ -198,14 +198,17 @@ HeelonBackup supports the following environment variables:
 
 #### `HEELONBACKUP_SMB_PASSWORD`
 
-The SMB password can be provided via this environment variable instead of storing it in the configuration file:
+In an **interactive terminal**, the SMB password is asked with a **masked prompt** when the NAS connection starts — it is never read from the environment, never stored in the shell history, and never displayed:
 
 ```bash
-# Set password for the current session
-export HEELONBACKUP_SMB_PASSWORD="your_secure_password"
+heelonbackup backup   # asks "SMB password for user@nas: " (hidden input)
+```
 
-# Run backup with password from environment
-heelonbackup backup
+For **non-interactive runs only** (scripts, cron, `sudo` without a tty), provide the password via the environment variable:
+
+```bash
+# Non-interactive run (script/cron) with the password from the environment
+HEELONBACKUP_SMB_PASSWORD="your_secure_password" heelonbackup backup
 ```
 
 This is the **recommended** way to provide the password, as it's more secure than storing it in a configuration file.
@@ -392,7 +395,7 @@ Running `heelonbackup` **without a subcommand** opens an interactive console (me
 - **Configuration**: show the configuration file, print its path, or open it in `$EDITOR`.
 - **Langue / Language**: switch the console between English and French for the session; the choice is saved in the configuration file (`"language": "en"` or `"fr"`, default `"en"`).
 
-Every flow uses the same engine as the CLI commands, so output, progress bars and exit codes are identical. The SMB password is asked with a hidden prompt (or read from `HEELONBACKUP_SMB_PASSWORD`) and is never stored or displayed. `Esc` / `q` / `Ctrl-C` leave the current dialogue cleanly; `Ctrl-C` during a transfer interrupts it (exit code 130, like the CLI). Passing any subcommand keeps the classic CLI behavior.
+Every flow uses the same engine as the CLI commands, so output, progress bars and exit codes are identical. The SMB password is asked with a masked (hidden) prompt and is never stored or displayed; `HEELONBACKUP_SMB_PASSWORD` is only used for non-interactive runs. `Esc` / `q` / `Ctrl-C` leave the current dialogue cleanly; `Ctrl-C` during a transfer interrupts it (exit code 130, like the CLI). Passing any subcommand keeps the classic CLI behavior.
 
 ## 🚀 Advanced Features
 
@@ -522,10 +525,10 @@ error: SMB authentication failed: session setup failed
 **Solution:**
 - Verify your username and password
 - Check if the user has access to the share
-- Try using the environment variable:
+- In a terminal the password is asked masked at launch; for scripts/cron, use the environment variable:
 
 ```bash
-export HEELONBACKUP_SMB_PASSWORD="your_password"
+export HEELONBACKUP_SMB_PASSWORD="your_password"   # non-interactive runs only
 heelonbackup backup
 ```
 
@@ -618,13 +621,13 @@ smbclient //nas-ip/share -U your_username -c "ls"
 
 ### Password Security
 
-**Best Practice**: Always use the environment variable for your SMB password instead of storing it in the configuration file:
+**Best Practice**: in a terminal, the SMB password is asked with a masked prompt — it is never stored on disk nor in the shell history. For non-interactive runs (scripts, cron), use the environment variable, never a hardcoded password:
 
 ```bash
-export HEELONBACKUP_SMB_PASSWORD="your_password"
+export HEELONBACKUP_SMB_PASSWORD="your_password"   # non-interactive runs only
 ```
 
-This ensures the password is not stored on disk and is only available for the current session.
+The password is passed to `smbclient` only through its `PASSWD` environment variable: never on a command line, never in logs or error messages.
 
 ### Encryption
 
