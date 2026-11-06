@@ -56,7 +56,6 @@ pub(crate) struct Strings {
     pub menu_language: &'static str,
     pub menu_quit: &'static str,
     pub language_saved: &'static str,
-    pub stub: &'static str,
     pub status_prompt: &'static str,
     pub status_options: [&'static str; 3],
     pub config_prompt: &'static str,
@@ -73,6 +72,12 @@ pub(crate) struct Strings {
     pub verify_latest: &'static str,
     pub verify_deep_prompt: &'static str,
     pub no_backup_on_nas: &'static str,
+    pub restore_prompt: &'static str,
+    pub restore_latest: &'static str,
+    pub restore_target_prompt: &'static str,
+    pub restore_paths_prompt: &'static str,
+    pub restore_overwrite_prompt: &'static str,
+    pub restore_run_prompt: &'static str,
 }
 
 pub(crate) static EN: Strings = Strings {
@@ -85,7 +90,6 @@ pub(crate) static EN: Strings = Strings {
     menu_language: "Langue / Language",
     menu_quit: "Quit",
     language_saved: "Language switched to English (saved in the configuration file).",
-    stub: "This flow is not implemented yet (phase 3).",
     status_prompt: "What do you want to see?",
     status_options: [
         "Last backup summary",
@@ -110,6 +114,12 @@ pub(crate) static EN: Strings = Strings {
     verify_latest: "Latest usable backup",
     verify_deep_prompt: "Deep verification (download every file and check its SHA-256; slow)?",
     no_backup_on_nas: "No backup found on the NAS.",
+    restore_prompt: "Which backup do you want to restore?",
+    restore_latest: "Latest usable backup",
+    restore_target_prompt: "Target folder (empty = original locations)",
+    restore_paths_prompt: "Only restore these paths (comma separated, empty = everything)",
+    restore_overwrite_prompt: "Overwrite existing files that differ from the backup?",
+    restore_run_prompt: "Run the restore now?",
 };
 
 pub(crate) static FR: Strings = Strings {
@@ -122,7 +132,6 @@ pub(crate) static FR: Strings = Strings {
     menu_language: "Langue / Language",
     menu_quit: "Quitter",
     language_saved: "Langue changée : français (enregistrée dans le fichier de configuration).",
-    stub: "Ce flux sera implémenté en phase 3.",
     status_prompt: "Que voulez-vous voir ?",
     status_options: [
         "Résumé du dernier backup",
@@ -147,6 +156,12 @@ pub(crate) static FR: Strings = Strings {
     verify_latest: "Dernier backup utilisable",
     verify_deep_prompt: "Vérification approfondie (télécharge chaque fichier et vérifie le SHA-256 ; lent) ?",
     no_backup_on_nas: "Aucun backup trouvé sur le NAS.",
+    restore_prompt: "Quel backup voulez-vous restaurer ?",
+    restore_latest: "Dernier backup utilisable",
+    restore_target_prompt: "Dossier cible (vide = emplacements d'origine)",
+    restore_paths_prompt: "Restaurer seulement ces chemins (séparés par des virgules, vide = tout)",
+    restore_overwrite_prompt: "Écraser les fichiers existants différents du backup ?",
+    restore_run_prompt: "Lancer la restauration maintenant ?",
 };
 
 #[cfg(test)]
@@ -167,7 +182,6 @@ mod tests {
     fn both_languages_define_the_menu() {
         for s in [Lang::En.strings(), Lang::Fr.strings()] {
             assert!(!s.menu_prompt.is_empty());
-            assert!(!s.stub.is_empty());
             assert_eq!(s.status_options.len(), 3);
             assert_eq!(s.config_options.len(), 3);
             assert_eq!(s.backup_source_options.len(), 2);

@@ -39,6 +39,29 @@ pub(crate) fn existing_paths(paths: &[String]) -> Result<Vec<PathBuf>> {
         .collect()
 }
 
+/// Index 0 of a backup picker = latest usable backup; otherwise the picked
+/// name must be a valid backup name
+pub(crate) fn picked_backup_name(index: usize, items: &[&str]) -> Result<Option<String>> {
+    if index == 0 {
+        return Ok(None);
+    }
+    let name = items
+        .get(index)
+        .ok_or_else(|| BackupError::BackupNotFound("no such backup in the list".into()))?;
+    validate_backup_name(name)?;
+    Ok(Some(name.to_string()))
+}
+
+/// Target folder of a restore: empty input = original locations
+pub(crate) fn parse_target(text: &str) -> Option<PathBuf> {
+    let trimmed = text.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(trimmed))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -68,5 +91,28 @@ mod tests {
         assert_eq!(ok, vec![dir.path().canonicalize().unwrap()]);
         assert!(existing_paths(&["/nonexistent/heelonbackup".to_string()]).is_err());
         assert!(existing_paths(&[]).unwrap().is_empty());
+    }
+
+    #[test]
+    fn backup_picking() {
+        let items = ["Latest usable backup", "20261010_094120", "20261010_100512"];
+        assert_eq!(picked_backup_name(0, &items).unwrap(), None);
+        assert_eq!(
+            picked_backup_name(1, &items).unwrap(),
+            Some("20261010_094120".to_string())
+        );
+        assert!(picked_backup_name(9, &items).is_err());
+        let bad = ["Latest usable backup", "not-a-name"];
+        assert!(picked_backup_name(1, &bad).is_err());
+    }
+
+    #[test]
+    fn target_parsing() {
+        assert_eq!(parse_target(""), None);
+        assert_eq!(parse_target("   "), None);
+        assert_eq!(
+            parse_target(" /tmp/restore "),
+            Some(PathBuf::from("/tmp/restore"))
+        );
     }
 }
