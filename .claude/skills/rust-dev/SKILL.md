@@ -19,15 +19,19 @@ Rust **édition 2024**, **MSRV 1.99** (`rust-version` dans `Cargo.toml`), licenc
     ├── lib.rs             # exports de la bibliothèque
     ├── error.rs           # BackupError / ConfigError (thiserror), BackupError::io(ctx, src)
     ├── config.rs          # config JSON, environnement dev/prod (HEELONBACKUP_ENV), mot de passe
-    ├── ui.rs              # PROGRESS (MultiProgress), LogWriter, bytes/duration/rate/…, bannière
+    ├── ui.rs              # say! (sortie service → stdout ou console), PROGRESS, LogWriter,
+    │                      # active_bars, bytes/duration/rate/…, bannière
     ├── backup/            # scanner.rs (scan + exclusions globset), hasher.rs (SHA-256)
-    ├── storage/           # smb_client.rs, transfer.rs, backup_manifest.rs
+    ├── storage/           # smb_client.rs (+ probe TCP du NAS), transfer.rs, backup_manifest.rs
     ├── service/           # orchestration partagée CLI/console : backup, restore, verify,
     │                      # status, config, remote (connexion SMB + manifestes distants) ;
-    │                      # mod.rs : enum Exit (0 ok, 1 échec, 2 avertissements, 130 interrompu)
+    │                      # mod.rs : enum Exit (0 ok, 1 échec, 2 avertissements, 130 interrompu),
+    │                      # interrupted() / request_interrupt() (arrêt des transferts)
     ├── cli/               # clap ; une commande par fichier : backup, restore, verify,
     │                      # status, config_cmd, common ; run() async dans mod.rs
-    └── console/           # dialoguer ; run() dans mod.rs, un fichier par flux,
+    └── console/           # tableau de bord ratatui : mod.rs (boucle, terminal, sonde NAS),
+                           # app.rs (état + touches, pur), view.rs (rendu), prompt.rs
+                           # (dialogues flux ↔ dashboard), un fichier par flux,
                            # strings.rs (libellés EN/FR), validate.rs (validateurs purs)
 
 Règles de placement :
@@ -36,12 +40,13 @@ Règles de placement :
 - **`cli/` et `console/` ne contiennent aucune logique métier** : la CLI analyse les arguments, la console collecte les choix, et toutes deux appellent la même orchestration `service/`. Logique pure → `backup/`/`storage/` ; validation pure des saisies console → `console/validate.rs`.
 - Les fonctions `service/` renvoient un `Exit` ; la conversion en code de sortie se fait uniquement dans le front-end.
 - **Parité CLI ↔ console** : toute nouvelle fonctionnalité est exposée en commande CLI **et** en flux console (sinon, exception justifiée dans la PR). Les surcharges purement techniques (`--workers`, `--max-file-size`, `--exclude`) restent CLI-only.
-- Toute progression passe par `ui::PROGRESS` et `ui::LogWriter` (writer de tracing), jamais par des `println!` concurrents aux barres.
+- **Aucun `println!` dans `service/`** : toute sortie utilisateur passe par `ui::say!` (stdout en CLI, panneau Terminal en console). Toute progression passe par `ui::spinner` / `ui::transfer_bar` (lues par la console via `ui::active_bars`) et les logs par `ui::LogWriter`.
+- Tout transfert interruptible attend `service::interrupted()`, jamais `tokio::signal::ctrl_c()` directement (en mode raw, Ctrl-C est une touche, pas un SIGINT).
 
 ## Idiomes du projet
 
 - **Erreurs** : `thiserror` dans `error.rs`. Erreurs utilisateur = variantes de `BackupError`/`ConfigError`, message **anglais, minuscule, orienté action** (ex. `cannot reach the NAS: {0}`). Toujours du contexte : `BackupError::io(context, source)` plutôt qu'un `#[from] io::Error` brut. Pas d'`anyhow` dans le code (la dépendance n'est utilisée nulle part).
-- **Async** : `#[tokio::main]`, smbclient en processus enfant (`tokio::process`), parallélisme via `backup.workers`. Le travail CPU/bloquant (hash, dialogues) tourne dans `spawn_blocking` ; Ctrl-C est géré par `tokio::select!` contre `tokio::signal::ctrl_c()`.
+- **Async** : `#[tokio::main]`, smbclient en processus enfant (`tokio::process`), parallélisme via `backup.workers`. Le travail CPU/bloquant (hash, éditeur externe) tourne dans `spawn_blocking` ; l'interruption passe par `tokio::select!` contre `service::interrupted()`.
 - **Sérialisation** : `serde` dérivé, JSON via `serde_json`. Config prod : `~/.config/heelonbackup/config.json` (dev : `.heelonbackup/config.json`). Clé `language: "en"|"fr"` (défaut `en`), rejetée si invalide.
 - **Formatage terminal** : helpers de `ui.rs` (`bytes`, `duration`, `rate`, `estimate`, `spinner`, `transfer_bar`). Ne pas réimplémenter.
 - **Doc** : `//!` en tête de module, `///` sur les éléments publics, en anglais, avec le « pourquoi ».
@@ -49,17 +54,20 @@ Règles de placement :
 
 ## Console interactive
 
-- **Lancement** : sans sous-commande → menu ; tout argument → CLI inchangée. stdin non-tty refusé proprement (exit 1).
-- **Crates** : `dialoguer` (Select/Confirm/Input, `default-features = false`, sans la feature `password`) + `rpassword` pour tout mot de passe. Pas de ratatui.
-- **Bilingue** : libellés dans `src/console/strings.rs` (struct `Strings`, instances EN/FR), bascule via l'entrée « Langue / Language », persistée dans `language`. CLI, erreurs et logs restent en anglais. Tout nouveau libellé est ajouté dans **les deux** langues.
+- **Lancement** : sans sous-commande → tableau de bord plein écran ; tout argument → CLI inchangée. stdin/stdout non-tty refusés proprement (exit 1) ; quitter → exit 0.
+- **Crates** : `ratatui` (backend crossterm réexporté : `ratatui::crossterm`, pas de dépendance crossterm directe). Plus de dialoguer. `rpassword` reste réservé à la CLI : en console, aucun prompt sur stdin/stdout (l'écran alterné le casserait).
+- **Écran** : en-tête (version, DEV/PROD, date/heure, EN|FR), panneau NAS (`service::remote::reachability`, toutes les 15 s et après chaque opération), panneau dernière sauvegarde (`LocalHistory`), actions avec raccourcis, panneau Terminal (sortie `ui::say!` + barres actives), aide des touches.
+- **Flux** : chaque flux tourne dans sa propre tâche et garde un code linéaire ; ses questions passent par `prompt::{select, confirm, input, password}` (boîtes modales). Un programme externe (éditeur) passe par `prompt::suspended`.
+- **Mot de passe** : demandé une seule fois par session via `console::ensure_password` (boîte masquée) avant toute opération NAS, gardé en mémoire (`config::set_session_password`), oublié sur `SmbAuth` et à la fermeture.
+- **Bilingue** : libellés dans `src/console/strings.rs` (struct `Strings`, instances EN/FR), bascule `L`, persistée dans `language`. CLI, erreurs, logs et sortie du panneau Terminal restent en anglais. Tout nouveau libellé est ajouté dans **les deux** langues.
 - **Sécurité par défaut** : les flux backup et restore proposent **toujours un dry-run avant tout transfert/écrasement réel**, exécution uniquement sur confirmation explicite.
-- **Annulation** : Échap / q / Ctrl-C propres à tout moment (`Ok(None)` dans les dialogues, `BackupError::Interrupted` / `Exit::Interrupted` → exit 130) — comportement vérifié dans la source de `dialoguer`/`console`, jamais de panic ni de terminal cassé.
-- **Tests** : la logique reste testable sans terminal ; les tests de `console/` couvrent les validateurs (chemins, bornes, noms `YYYYMMDD_HHMMSS`) et les mappings du menu, jamais le rendu des dialogues.
+- **Annulation** : dans une boîte, Échap / Ctrl-C → `Ok(None)` (retour au menu). Opération en cours : Ctrl-C → `service::request_interrupt()`, le tableau de bord reste ouvert. Au repos : q / Échap / Ctrl-C quittent. Jamais de panic ni de terminal cassé (`ratatui::init/restore`).
+- **Tests** : la logique reste testable sans terminal : `app.rs` (touches, dialogues, défilement), `view.rs` via `ratatui::backend::TestBackend` (rendu, mot de passe jamais affiché), validateurs. Validation réelle : piloter le binaire dans une session tmux dédiée (`tmux -L <socket>`, `capture-pane`), en dev, sans transfert réel.
 - **Mode dev** : la console respecte `HEELONBACKUP_ENV=dev` et la bannière `ui::print_environment_banner()`.
 
 ## Sécurité — à respecter strictement
 
-- **Jamais de mot de passe SMB en clair** dans le code, la config commitée, les logs, les messages d'erreur ou une ligne de commande. Il vient de `HEELONBACKUP_SMB_PASSWORD` ou d'un prompt `rpassword`.
+- **Jamais de mot de passe SMB en clair** dans le code, la config commitée, les logs, les messages d'erreur ou une ligne de commande. Il vient de `HEELONBACKUP_SMB_PASSWORD`, d'un prompt `rpassword` (CLI) ou de la boîte masquée de la console (mémoire uniquement).
 - **Jamais de sauvegarde réelle hors dev** : toutes les recettes `just` fixent `HEELONBACKUP_ENV=dev` (config/historique dans `.heelonbackup/`, dossiers `dev_*` sur le NAS). Ne jamais lancer `cargo run` / le binaire directement pour une opération NAS : passer par `just`.
 - Tests réseau réels : uniquement si l'utilisateur a fourni `HEELONBACKUP_SMB_PASSWORD` dans le shell, et uniquement via `just verify-deep`, `just backup-execute` (petites sources de test) et `just restore-dryrun`. Jamais en production, jamais hors des dossiers `dev_*`.
 - **Recettes interdites à l'agent** (personnelles, sudo ou transfert réel non-dev) : `backup-laptop*`, `system-inventory`, `setup-patrick`, `backup-patrick*`, `quick-test`, `full-test`. Les laisser à l'utilisateur.
@@ -87,7 +95,7 @@ Ordre pour une tâche de code :
 2. Implémenter selon l'architecture et les idiomes ci-dessus.
 3. Tests dans le module (`#[cfg(test)] mod tests` en fin de fichier), cas limites compris (chemins vides, gros fichiers, interruptions, erreurs SMB simulées).
 4. `just fmt-fix`, puis `just dev` **et** le clippy CI jusqu'au vert, sans warning.
-5. Si un comportement utilisateur change : `just run --help`, `just backup-dryrun <source>`. Pour toute modification de CLI, comparer sorties et codes de sortie avant/après (méthode de régression de référence). La console ne se teste pas dans un pipe : demander à l'utilisateur de lancer `just run` dans un vrai terminal pour la validation visuelle.
+5. Si un comportement utilisateur change : `just run --help`, `just backup-dryrun <source>`. Pour toute modification de CLI, comparer sorties et codes de sortie avant/après (méthode de régression de référence). La console ne se teste pas dans un pipe : la piloter dans tmux (voir « Console interactive ») ou demander à l'utilisateur de lancer `just run`.
 
 ## Validation de sauvegarde (mode dev uniquement)
 
