@@ -325,6 +325,11 @@ pub fn is_safe_component(s: &str) -> bool {
     !s.is_empty() && s != "." && s != ".." && !s.contains('/') && is_safe_for_smbclient(s)
 }
 
+/// `Some` only when the value exists and is not empty
+fn non_empty(value: Option<String>) -> Option<String> {
+    value.filter(|s| !s.is_empty())
+}
+
 impl Config {
     /// Default configuration file path for the current environment
     pub fn default_path() -> PathBuf {
@@ -452,27 +457,40 @@ impl Config {
         })
     }
 
-    /// Password from the environment, the configuration, or an interactive prompt
+    /// Password resolution order:
+    ///
+    /// 1. interactive terminal (stdin is a tty): masked prompt when the NAS
+    ///    connection starts — the password is a secret typed by the user, never
+    ///    taken from the environment in an interactive session;
+    /// 2. non-interactive (scripts, cron, sudo without a tty): `HEELONBACKUP_SMB_PASSWORD`
+    ///    (when set and not empty), then `smb.password` from the configuration file;
+    /// 3. otherwise a clear error (never a prompt on a pipe).
     pub fn resolve_password(&self) -> Result<String, ConfigError> {
-        if let Ok(password) = std::env::var(PASSWORD_ENV) {
-            return Ok(password);
-        }
-        if let Some(password) = &self.smb.password {
-            return Ok(password.clone());
-        }
         if std::io::stdin().is_terminal() {
             let target = SmbTarget::parse(&self.smb.url)?;
-            return rpassword::prompt_password(format!(
-                "SMB password for {}@{}: ",
-                self.smb.username, target.host
-            ))
-            .map_err(|source| ConfigError::Io {
-                path: PathBuf::from("/dev/tty"),
-                source,
-            });
+            loop {
+                let password = rpassword::prompt_password(format!(
+                    "SMB password for {}@{}: ",
+                    self.smb.username, target.host
+                ))
+                .map_err(|source| ConfigError::Io {
+                    path: PathBuf::from("/dev/tty"),
+                    source,
+                })?;
+                if !password.is_empty() {
+                    return Ok(password);
+                }
+                eprintln!("the password must not be empty");
+            }
+        }
+        if let Some(password) = non_empty(std::env::var(PASSWORD_ENV).ok()) {
+            return Ok(password);
+        }
+        if let Some(password) = non_empty(self.smb.password.clone()) {
+            return Ok(password);
         }
         Err(ConfigError::Invalid(format!(
-            "no SMB password available: set {PASSWORD_ENV} or smb.password"
+            "no SMB password available: run interactively for a masked prompt, or set {PASSWORD_ENV} (non-interactive runs only)"
         )))
     }
 }
@@ -574,6 +592,13 @@ mod tests {
         let config: Config = serde_json::from_str(json).unwrap();
         assert_eq!(config.language, "en");
         assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn non_empty_password_values() {
+        assert_eq!(non_empty(None), None);
+        assert_eq!(non_empty(Some(String::new())), None);
+        assert_eq!(non_empty(Some("x".into())), Some("x".into()));
     }
 
     #[test]

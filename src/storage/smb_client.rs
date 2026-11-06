@@ -516,6 +516,32 @@ mod tests {
     }
 
     #[test]
+    fn password_is_passed_via_env_never_on_the_command_line() {
+        let client = SmbClient {
+            target: SmbTarget::parse("smb://nas.local/backup").unwrap(),
+            username: "patrickp44".into(),
+            password: "s3cr%et $x \"q\"".into(),
+            workgroup: None,
+            timeout: 30,
+            encrypt: true,
+            legacy_encrypt_flag: false,
+        };
+        let cmd = client.command();
+        let std_cmd = cmd.as_std();
+        for arg in std_cmd.get_args() {
+            assert!(
+                !arg.to_string_lossy().contains("s3cr"),
+                "password leaked into smbclient args"
+            );
+        }
+        assert!(
+            std_cmd
+                .get_envs()
+                .any(|(k, v)| k == "PASSWD" && v == Some("s3cr%et $x \"q\"".as_ref()))
+        );
+    }
+
+    #[test]
     fn quoting_and_versions() {
         assert_eq!(quote("a b;c").unwrap(), "\"a b;c\"");
         assert!(quote("a\"b").is_err());
