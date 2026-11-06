@@ -1,10 +1,9 @@
-//! Orchestration shared by the front-ends (`cli/` and, later, `console/`).
+//! Orchestration shared by the front-ends (`cli/` and `console/`).
 //!
 //! Neither front-end contains business logic: it collects the user's choices,
 //! then calls the functions of this module. Everything that prints is grouped
-//! in small dedicated display functions marked `TODO(console)`: in phase 3 the
-//! display will be passed as a parameter of the `run()` functions so the
-//! console can render its own output.
+//! in small display functions and goes through `ui::say!`, so the CLI prints
+//! it as-is and the console shows it in its terminal pane.
 
 pub(crate) mod backup;
 pub(crate) mod config;
@@ -14,6 +13,12 @@ pub(crate) mod status;
 pub(crate) mod verify;
 
 use std::path::PathBuf;
+
+/// Resolves when the user asks to stop the running transfer (Ctrl-C).
+/// Shared by every transfer so a front-end can add its own interrupt source.
+pub(crate) async fn interrupted() {
+    let _ = tokio::signal::ctrl_c().await;
+}
 
 /// Result of an operation, mapped to a process exit code by the CLI front-end
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

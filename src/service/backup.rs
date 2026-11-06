@@ -205,7 +205,7 @@ async fn execute(
     let transfer = Transfer::new(items, pb.clone());
     let interrupted = tokio::select! {
         () = transfer.run(client, Mode::Upload, config.backup.workers) => false,
-        _ = tokio::signal::ctrl_c() => true,
+        () = super::interrupted() => true,
     };
     pb.finish_and_clear();
 
@@ -385,13 +385,10 @@ fn retention_candidates<'a>(
 }
 
 // ---- Display ----
-// TODO(console): all the printing of this module is grouped in the small
-// functions below. In phase 3 the display will be passed as a parameter of
-// run() so the console can render its own output; until then they keep the
-// exact CLI output.
+// Every line goes through `ui::say!`: printed as-is by the CLI, shown in the
+// terminal pane by the console.
 
 /// The scanned plan: sources, file count, destination, estimate
-// TODO(console)
 fn print_scan_plan(
     sources: &[PathBuf],
     report: &ScanReport,
@@ -400,86 +397,80 @@ fn print_scan_plan(
     rate: Option<f64>,
     dry_run: bool,
 ) {
-    println!("📦 Backup plan{}", if dry_run { " (dry run)" } else { "" });
-    println!("{}", ui::RULE);
+    ui::say!("📦 Backup plan{}", if dry_run { " (dry run)" } else { "" });
+    ui::say!("{}", ui::RULE);
     for source in sources {
-        println!("  Source:          {}", source.display());
+        ui::say!("  Source:          {}", source.display());
     }
-    println!(
+    ui::say!(
         "  Files:           {} ({})  [scanned in {}]",
         report.files.len(),
         ui::bytes(report.total_size),
         ui::duration(scanned_in)
     );
     if !report.skipped.is_empty() {
-        println!("  Skipped:         {}", report.skipped.len());
+        ui::say!("  Skipped:         {}", report.skipped.len());
         for (reason, count) in report.skipped_by_reason() {
-            println!("    • {count} × {reason}");
+            ui::say!("    • {count} × {reason}");
         }
     }
-    println!("  Destination:     {destination}");
-    println!(
+    ui::say!("  Destination:     {destination}");
+    ui::say!(
         "  Estimated time:  {}",
         ui::estimate(report.total_size, rate)
     );
-    println!("{}", ui::RULE);
+    ui::say!("{}", ui::RULE);
 }
 
-// TODO(console)
 fn print_nothing_to_back_up() {
-    println!("Nothing to back up.");
+    ui::say!("Nothing to back up.");
 }
 
-// TODO(console)
 fn print_dry_run(report: &ScanReport, list: bool) {
     if list {
         for file in &report.files {
-            println!("  {}  ({})", file.key, ui::bytes(file.size));
+            ui::say!("  {}  ({})", file.key, ui::bytes(file.size));
         }
         if !report.skipped.is_empty() {
-            println!("Skipped:");
+            ui::say!("Skipped:");
             for issue in &report.skipped {
-                println!("  {}  ({})", issue.path, issue.reason);
+                ui::say!("  {}  ({})", issue.path, issue.reason);
             }
         }
     }
-    println!("✅ Dry run OK: nothing was transferred.");
+    ui::say!("✅ Dry run OK: nothing was transferred.");
 }
 
-// TODO(console)
 fn print_connected(target: &SmbTarget, encrypt: bool) {
-    println!(
+    ui::say!(
         "🔌 Connected to {target} (encryption: {})",
         if encrypt { "on" } else { "off" }
     );
 }
 
-// TODO(console)
 fn print_retention_kept() {
-    println!("ℹ️  Old backups were kept because this backup has errors.");
+    ui::say!("ℹ️  Old backups were kept because this backup has errors.");
 }
 
-// TODO(console)
 fn print_removed(name: &str, keep: usize) {
-    println!("🗑  Removed old backup {name} (retention: keep {keep})");
+    ui::say!("🗑  Removed old backup {name} (retention: keep {keep})");
 }
 
-// TODO(console)
 fn print_summary(m: &BackupManifest, target: &SmbTarget) {
     let title = match m.status {
         BackupStatus::Completed => "Backup completed successfully",
         BackupStatus::CompletedWithErrors => "Backup completed with errors",
         _ => "Backup FAILED",
     };
-    println!("{}", ui::RULE);
-    println!("{} {title}", m.status.icon());
-    println!("{}", ui::RULE);
-    println!("  Backup:      {}", m.name);
-    println!(
+    ui::say!("{}", ui::RULE);
+    ui::say!("{} {title}", m.status.icon());
+    ui::say!("{}", ui::RULE);
+    ui::say!("  Backup:      {}", m.name);
+    ui::say!(
         "  Location:    {}",
         remote::remote_display(target, &m.backup_path)
     );
-    println!(
+    ui::say!(
         "  Saved:       {} files ({})",
         m.file_count,
         ui::bytes(m.total_size)
@@ -489,13 +480,13 @@ fn print_summary(m: &BackupManifest, target: &SmbTarget) {
             .throughput()
             .map(|r| format!(" — {}", ui::rate(r)))
             .unwrap_or_default();
-        println!("  Duration:    {}{rate}", ui::duration(d));
+        ui::say!("  Duration:    {}{rate}", ui::duration(d));
     }
     if m.verified && m.file_count > 0 {
-        println!("  Verified:    all saved files are present on the NAS with the right size");
+        ui::say!("  Verified:    all saved files are present on the NAS with the right size");
     }
     if m.skipped_count > 0 {
-        println!(
+        ui::say!(
             "  Skipped:     {} (see `heelonbackup status --detailed`)",
             m.skipped_count
         );
@@ -505,16 +496,16 @@ fn print_summary(m: &BackupManifest, target: &SmbTarget) {
         .iter()
         .partition(|i| i.reason.starts_with(NOT_TRANSFERRED));
     if !not_done.is_empty() {
-        println!("  Not sent:    {} files (transfer stopped)", not_done.len());
+        ui::say!("  Not sent:    {} files (transfer stopped)", not_done.len());
     }
     if !failed.is_empty() {
-        println!("  Failed:      {}", failed.len());
+        ui::say!("  Failed:      {}", failed.len());
         ui::print_limited(&failed, 10, |i| format!("{}: {}", i.path, i.reason));
     }
     if let Some(notes) = &m.notes {
-        println!("  Note:        {notes}");
+        ui::say!("  Note:        {notes}");
     }
-    println!("{}", ui::RULE);
+    ui::say!("{}", ui::RULE);
 }
 
 #[cfg(test)]
