@@ -1,8 +1,8 @@
 //! `heelonbackup restore`
 
-use super::common::{self, Exit};
 use crate::config::{Config, is_safe_for_smbclient};
 use crate::error::{BackupError, Result};
+use crate::service::{Exit, remote};
 use crate::storage::transfer::{Item, Mode, Outcome, Transfer};
 use crate::storage::{BackupManifest, FileInfo, LocalHistory};
 use crate::ui;
@@ -191,8 +191,8 @@ pub async fn run(config: &Config, args: RestoreArgs) -> Result<Exit> {
         }
         None => None,
     };
-    let client = common::connect(config).await?;
-    let manifest = common::resolve_backup(&client, config, args.backup.as_deref()).await?;
+    let client = remote::connect(config).await?;
+    let manifest = remote::resolve_backup(&client, config, args.backup.as_deref()).await?;
 
     let selected: Vec<(&String, &FileInfo)> = manifest
         .files
@@ -254,8 +254,8 @@ pub async fn run(config: &Config, args: RestoreArgs) -> Result<Exit> {
     println!(
         "  Backup:          {} ({}, {} from {}, {})",
         manifest.name,
-        common::date(manifest.started_at),
-        common::age(manifest.started_at),
+        ui::date(manifest.started_at),
+        ui::age(manifest.started_at),
         manifest.hostname,
         manifest.status.label()
     );
@@ -345,14 +345,14 @@ fn print_plan(plan: &[Planned<'_>], manifest: &BackupManifest, list: bool) {
             conflicts.len()
         );
         if !list {
-            common::print_limited(&conflicts, 10, |p| p.dest.display().to_string());
+            ui::print_limited(&conflicts, 10, |p| p.dest.display().to_string());
         }
     }
     let blocked = count(Action::Blocked);
     if !blocked.is_empty() {
         println!("  ❌ Cannot restore: {} files", blocked.len());
         if !list {
-            common::print_limited(&blocked, 10, |p| {
+            ui::print_limited(&blocked, 10, |p| {
                 format!("{}: {}", p.key, p.problem.as_deref().unwrap_or("?"))
             });
         }
@@ -487,7 +487,7 @@ async fn execute(
     }
     if !failures.is_empty() {
         println!("  Failed:          {}", failures.len());
-        common::print_limited(&failures, 10, |(p, r)| format!("{p}: {r}"));
+        ui::print_limited(&failures, 10, |(p, r)| format!("{p}: {r}"));
     }
     println!("{}", ui::RULE);
 

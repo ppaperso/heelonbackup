@@ -1,9 +1,9 @@
 //! `heelonbackup backup`
 
-use super::common::{self, Exit};
 use crate::backup::{Excludes, ScanReport, scan};
 use crate::config::Config;
 use crate::error::{BackupError, Result};
+use crate::service::{Exit, expand_tilde, remote};
 use crate::storage::backup_manifest::{
     MANIFEST_FILE, NOT_TRANSFERRED, SUMMARY_FILE, new_backup_name,
 };
@@ -35,7 +35,7 @@ fn resolve_sources(config: &Config, args: &BackupArgs) -> Result<Vec<PathBuf>> {
     let mut sources = Vec::new();
     if args.paths.is_empty() {
         for source in &config.backup.sources {
-            let path = common::expand_tilde(source);
+            let path = expand_tilde(source);
             match path.canonicalize() {
                 Ok(p) => sources.push(p),
                 Err(e) => warn!("Source {} ignored: {e}", path.display()),
@@ -109,7 +109,7 @@ pub async fn run(config: &Config, args: BackupArgs) -> Result<Exit> {
     }
     println!(
         "  Destination:     {}",
-        common::remote_display(&target, &format!("{base}/{name}"))
+        remote::remote_display(&target, &format!("{base}/{name}"))
     );
     println!(
         "  Estimated time:  {}",
@@ -142,7 +142,7 @@ pub async fn run(config: &Config, args: BackupArgs) -> Result<Exit> {
         return Ok(Exit::Success);
     }
 
-    let client = common::connect(config).await?;
+    let client = remote::connect(config).await?;
     println!(
         "🔌 Connected to {target} (encryption: {})",
         on_off(config.smb.encrypt)
@@ -354,7 +354,7 @@ async fn apply_retention(
     let Ok(base) = config.remote_base() else {
         return;
     };
-    let backups = match common::load_summaries(client, &base).await {
+    let backups = match remote::load_summaries(client, &base).await {
         Ok(backups) => backups,
         Err(e) => {
             warn!("Retention skipped: {e}");
@@ -411,7 +411,7 @@ fn print_summary(m: &BackupManifest, target: &crate::config::SmbTarget) {
     println!("  Backup:      {}", m.name);
     println!(
         "  Location:    {}",
-        common::remote_display(target, &m.backup_path)
+        remote::remote_display(target, &m.backup_path)
     );
     println!(
         "  Saved:       {} files ({})",
@@ -443,7 +443,7 @@ fn print_summary(m: &BackupManifest, target: &crate::config::SmbTarget) {
     }
     if !failed.is_empty() {
         println!("  Failed:      {}", failed.len());
-        common::print_limited(&failed, 10, |i| format!("{}: {}", i.path, i.reason));
+        ui::print_limited(&failed, 10, |i| format!("{}: {}", i.path, i.reason));
     }
     if let Some(notes) = &m.notes {
         println!("  Note:        {notes}");

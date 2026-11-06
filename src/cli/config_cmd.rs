@@ -1,8 +1,8 @@
 //! `heelonbackup config`
 
-use super::common::Exit;
 use crate::config::{Config, PASSWORD_ENV, SmbTarget};
 use crate::error::{BackupError, ConfigError, Result};
+use crate::service::Exit;
 use clap::Subcommand;
 use std::io::{BufRead, IsTerminal, Write};
 use std::path::Path;

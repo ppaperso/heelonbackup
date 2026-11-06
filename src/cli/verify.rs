@@ -1,19 +1,19 @@
 //! `heelonbackup verify`
 
-use super::common::{self, Exit};
 use crate::config::Config;
 use crate::error::{BackupError, Result};
+use crate::service::{Exit, remote};
 use crate::storage::transfer::{Item, Mode, Outcome, Transfer};
 use crate::ui;
 use std::collections::HashMap;
 
 pub async fn run(config: &Config, name: Option<&str>, deep: bool) -> Result<Exit> {
-    let client = common::connect(config).await?;
-    let manifest = common::resolve_backup(&client, config, name).await?;
+    let client = remote::connect(config).await?;
+    let manifest = remote::resolve_backup(&client, config, name).await?;
     println!(
         "🔍 Verifying backup {} ({}, {} files, {}){}",
         manifest.name,
-        common::date(manifest.started_at),
+        ui::date(manifest.started_at),
         manifest.file_count,
         ui::bytes(manifest.total_size),
         if deep {
@@ -104,7 +104,7 @@ pub async fn run(config: &Config, name: Option<&str>, deep: bool) -> Result<Exit
             manifest.name,
             problems.len()
         );
-        common::print_limited(&problems, 20, |(k, r)| format!("{k}: {r}"));
+        ui::print_limited(&problems, 20, |(k, r)| format!("{k}: {r}"));
     }
     if manifest.failed_count > 0 {
         println!(

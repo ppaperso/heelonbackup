@@ -9,9 +9,9 @@ mod verify;
 
 use crate::config::Config;
 use crate::error::BackupError;
+use crate::service::Exit;
 use crate::ui;
 use clap::{CommandFactory, Parser, Subcommand};
-use common::Exit;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use tracing_subscriber::EnvFilter;

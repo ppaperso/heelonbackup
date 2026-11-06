@@ -1,8 +1,8 @@
 //! `heelonbackup status` (local history) and `heelonbackup list` (backups on the NAS)
 
-use super::common::{self, Exit};
 use crate::config::Config;
 use crate::error::Result;
+use crate::service::{Exit, remote};
 use crate::storage::{BackupManifest, BackupStatus, LocalHistory};
 use crate::ui;
 use chrono::Local;
@@ -30,7 +30,7 @@ pub fn status(all: bool, detailed: bool) -> Exit {
         Some(ok) if (Local::now() - ok.started_at).num_days() >= STALE_DAYS => {
             println!(
                 "⚠️  The last successful backup is {} old ({}). Time for a new one!",
-                common::age(ok.started_at).trim_end_matches(" ago"),
+                ui::age(ok.started_at).trim_end_matches(" ago"),
                 ok.name
             );
             Exit::Warnings
@@ -39,7 +39,7 @@ pub fn status(all: bool, detailed: bool) -> Exit {
             println!(
                 "ℹ️  Last successful backup: {} ({})",
                 ok.name,
-                common::age(ok.started_at)
+                ui::age(ok.started_at)
             );
             Exit::Warnings
         }
@@ -69,8 +69,8 @@ fn print_details(m: &BackupManifest, detailed: bool) {
     println!("  Backup:      {}", m.name);
     println!(
         "  Date:        {} ({})",
-        common::date(m.started_at),
-        common::age(m.started_at)
+        ui::date(m.started_at),
+        ui::age(m.started_at)
     );
     println!("  Location:    {}/{}", m.server, m.backup_path);
     println!(
@@ -102,13 +102,13 @@ fn print_details(m: &BackupManifest, detailed: bool) {
     if detailed {
         if !m.failed.is_empty() {
             println!("  Failed files:");
-            common::print_limited(&m.failed, usize::MAX, |i| {
+            ui::print_limited(&m.failed, usize::MAX, |i| {
                 format!("{}: {}", i.path, i.reason)
             });
         }
         if !m.skipped.is_empty() {
             println!("  Skipped files:");
-            common::print_limited(&m.skipped, usize::MAX, |i| {
+            ui::print_limited(&m.skipped, usize::MAX, |i| {
                 format!("{}: {}", i.path, i.reason)
             });
         }
@@ -146,10 +146,10 @@ fn print_table(list: &[BackupManifest]) {
 }
 
 pub async fn list(config: &Config) -> Result<Exit> {
-    let client = common::connect(config).await?;
+    let client = remote::connect(config).await?;
     let base = config.remote_base()?;
     let spinner = ui::spinner("Reading backups on the NAS...");
-    let result = common::load_summaries(&client, &base).await;
+    let result = remote::load_summaries(&client, &base).await;
     spinner.finish_and_clear();
     let backups = result?;
 
@@ -157,14 +157,14 @@ pub async fn list(config: &Config) -> Result<Exit> {
     if backups.is_empty() {
         println!(
             "No backup found in {}.",
-            common::remote_display(&target, &base)
+            remote::remote_display(&target, &base)
         );
         return Ok(Exit::Success);
     }
     println!(
         "🗄  {} backup(s) in {} (retention: {})",
         backups.len(),
-        common::remote_display(&target, &base),
+        remote::remote_display(&target, &base),
         match config.storage.retention {
             0 => "keep all".to_string(),
             n => format!("keep {n}"),
