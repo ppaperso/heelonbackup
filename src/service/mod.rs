@@ -8,6 +8,7 @@
 
 pub(crate) mod backup;
 pub(crate) mod remote;
+pub(crate) mod restore;
 
 use std::path::PathBuf;
 
