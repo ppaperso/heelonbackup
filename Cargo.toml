@@ -22,7 +22,6 @@ clap_complete = "4.5"
 tokio = { version = "1.38", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "signal", "time"] }
 
 # Error handling
-anyhow = "1.0"
 thiserror = "2.0"
 
 # Serialization

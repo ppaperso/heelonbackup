@@ -33,3 +33,4 @@ Thumbs.db
 
 # Agent tooling (session-local configuration, never committed)
 .vibe/
+.claude/settings.local.json
