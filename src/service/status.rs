@@ -6,6 +6,7 @@
 use super::{Exit, remote};
 use crate::config::{Config, SmbTarget};
 use crate::error::Result;
+use crate::storage::smb_client::Reachability;
 use crate::storage::{BackupManifest, BackupStatus, LocalHistory};
 use crate::ui;
 use chrono::Local;
@@ -26,6 +27,22 @@ pub fn status(all: bool, detailed: bool) -> Exit {
         print_history(&history);
     }
     exit
+}
+
+/// Is the NAS reachable? Online = success, offline = failure (no password needed)
+pub async fn ping(config: &Config) -> Result<Exit> {
+    let (target, state) = remote::reachability(config).await?;
+    let address = remote::probed_address(&target);
+    Ok(match state {
+        Reachability::Online(latency) => {
+            ui::say!("🟢 NAS online: {address} ({} ms)", latency.as_millis());
+            Exit::Success
+        }
+        Reachability::Offline(reason) => {
+            ui::say!("🔴 NAS offline: {address} ({reason})");
+            Exit::Failure
+        }
+    })
 }
 
 pub async fn list(config: &Config) -> Result<Exit> {

@@ -50,6 +50,9 @@ pub enum Commands {
     /// List the backups stored on the NAS
     List,
 
+    /// Check that the NAS answers on its SMB port (no password needed)
+    Ping,
+
     /// Check that a backup is complete on the NAS
     Verify {
         /// Backup name (YYYYMMDD_HHMMSS) [default: latest]
@@ -115,6 +118,10 @@ pub async fn run() -> ExitCode {
         }
         Commands::List => match common::load_config(&config_path, verbose) {
             Ok(config) => status::list(&config).await,
+            Err(e) => Err(e),
+        },
+        Commands::Ping => match common::load_config(&config_path, verbose) {
+            Ok(config) => status::ping(&config).await,
             Err(e) => Err(e),
         },
         Commands::Verify { backup, deep } => match common::load_config(&config_path, verbose) {

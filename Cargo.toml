@@ -19,7 +19,7 @@ clap = { version = "4.5", features = ["derive", "cargo", "wrap_help"] }
 clap_complete = "4.5"
 
 # Async runtime (smbclient sessions run as child processes)
-tokio = { version = "1.38", features = ["rt-multi-thread", "macros", "process", "io-util", "sync", "signal", "time"] }
+tokio = { version = "1.38", features = ["rt-multi-thread", "macros", "net", "process", "io-util", "sync", "signal", "time"] }
 
 # Error handling
 thiserror = "2.0"

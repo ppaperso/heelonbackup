@@ -8,11 +8,37 @@ use crate::config::{Config, SmbTarget, is_safe_for_smbclient};
 use crate::error::{BackupError, Result};
 use std::collections::BTreeSet;
 use std::process::Stdio;
+use std::time::{Duration, Instant};
 use tokio::io::{AsyncBufReadExt, AsyncReadExt, AsyncWriteExt, BufReader};
+use tokio::net::TcpStream;
 use tokio::process::Command;
 use tracing::debug;
 
 const SMBCLIENT: &str = "smbclient";
+
+/// SMB port used when the URL does not give one
+pub const SMB_PORT: u16 = 445;
+
+/// Result of [`probe`]: can the NAS be reached on its SMB port?
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Reachability {
+    /// TCP connection accepted, with the time it took
+    Online(Duration),
+    /// No connection: the reason (timeout, refused, unknown host, ...)
+    Offline(String),
+}
+
+/// Check that the NAS accepts TCP connections on its SMB port, without
+/// authenticating: cheap enough to be repeated, and never needs the password.
+pub async fn probe(target: &SmbTarget, timeout: Duration) -> Reachability {
+    let port = target.port.unwrap_or(SMB_PORT);
+    let started = Instant::now();
+    match tokio::time::timeout(timeout, TcpStream::connect((target.host.as_str(), port))).await {
+        Ok(Ok(_stream)) => Reachability::Online(started.elapsed()),
+        Ok(Err(e)) => Reachability::Offline(e.to_string()),
+        Err(_) => Reachability::Offline(format!("no answer within {}s", timeout.as_secs())),
+    }
+}
 
 /// Output of a batch session
 #[derive(Debug, Default)]
@@ -549,5 +575,23 @@ mod tests {
         assert_eq!(smb_display_path("a/b c/d"), "\\a\\b c\\d");
         assert_eq!(parse_version("Version 4.24.7\n"), Some((4, 24)));
         assert_eq!(parse_version("Version 4.13.17-Ubuntu"), Some((4, 13)));
+    }
+
+    #[tokio::test]
+    async fn probe_reports_online_and_offline() {
+        let listener = std::net::TcpListener::bind("127.0.0.1:0").unwrap();
+        let port = listener.local_addr().unwrap().port();
+        let mut target = SmbTarget::parse("smb://127.0.0.1/backup").unwrap();
+        target.port = Some(port);
+        let timeout = Duration::from_secs(2);
+        assert!(matches!(
+            probe(&target, timeout).await,
+            Reachability::Online(_)
+        ));
+        drop(listener);
+        assert!(matches!(
+            probe(&target, timeout).await,
+            Reachability::Offline(_)
+        ));
     }
 }

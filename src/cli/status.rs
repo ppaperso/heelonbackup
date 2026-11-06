@@ -1,4 +1,5 @@
-//! `heelonbackup status` (local history) and `heelonbackup list` (backups on the NAS)
+//! `heelonbackup status` (local history), `heelonbackup list` (backups on the NAS)
+//! and `heelonbackup ping` (NAS reachability)
 
 use crate::config::Config;
 use crate::error::Result;
@@ -11,4 +12,8 @@ pub fn status(all: bool, detailed: bool) -> Exit {
 
 pub async fn list(config: &Config) -> Result<Exit> {
     service::status::list(config).await
+}
+
+pub async fn ping(config: &Config) -> Result<Exit> {
+    service::status::ping(config).await
 }

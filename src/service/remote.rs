@@ -3,9 +3,29 @@
 use crate::config::{Config, SmbTarget};
 use crate::error::{BackupError, Result};
 use crate::storage::backup_manifest::{MANIFEST_FILE, SUMMARY_FILE, is_backup_name};
-use crate::storage::smb_client::quote;
+use crate::storage::smb_client::{self, Reachability, quote};
 use crate::storage::{BackupManifest, SmbClient};
 use crate::ui;
+use std::time::Duration;
+
+/// How long a reachability check waits for the NAS
+pub const PROBE_TIMEOUT: Duration = Duration::from_secs(3);
+
+/// Is the configured NAS reachable on its SMB port? (no password needed)
+pub async fn reachability(config: &Config) -> Result<(SmbTarget, Reachability)> {
+    let target = SmbTarget::parse(&config.smb.url)?;
+    let state = smb_client::probe(&target, PROBE_TIMEOUT).await;
+    Ok((target, state))
+}
+
+/// `host:port` actually probed by [`reachability`]
+pub fn probed_address(target: &SmbTarget) -> String {
+    format!(
+        "{}:{}",
+        target.host,
+        target.port.unwrap_or(smb_client::SMB_PORT)
+    )
+}
 
 /// Display form of a remote directory: `//host/share/dir`
 pub fn remote_display(target: &SmbTarget, dir: &str) -> String {
