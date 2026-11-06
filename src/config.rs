@@ -7,6 +7,7 @@ use std::fs;
 use std::io::{IsTerminal, Write};
 use std::os::unix::fs::{OpenOptionsExt, PermissionsExt};
 use std::path::{Path, PathBuf};
+use std::sync::Mutex;
 
 /// Environment variable that selects the development environment (`dev`)
 pub const ENV_VAR: &str = "HEELONBACKUP_ENV";
@@ -85,6 +86,26 @@ impl Environment {
 
 /// Environment variable that overrides the SMB password from the configuration
 pub const PASSWORD_ENV: &str = "HEELONBACKUP_SMB_PASSWORD";
+
+/// Password typed once in the interactive console, reused by every NAS operation
+/// of the session. Memory only: never written to disk, gone when the process exits.
+static SESSION_PASSWORD: Mutex<Option<String>> = Mutex::new(None);
+
+fn session_password() -> std::sync::MutexGuard<'static, Option<String>> {
+    SESSION_PASSWORD
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+}
+
+/// Set (or forget, with `None`) the console session password
+pub(crate) fn set_session_password(password: Option<String>) {
+    *session_password() = password.filter(|p| !p.is_empty());
+}
+
+/// True once the console session has a password
+pub(crate) fn has_session_password() -> bool {
+    session_password().is_some()
+}
 
 /// SMB connection configuration
 #[derive(Clone, Serialize, Deserialize)]
@@ -459,6 +480,8 @@ impl Config {
 
     /// Password resolution order:
     ///
+    /// 0. the console session password, when the interactive console has asked for it
+    ///    (its full-screen display cannot host a terminal prompt);
     /// 1. interactive terminal (stdin is a tty): masked prompt when the NAS
     ///    connection starts — the password is a secret typed by the user, never
     ///    taken from the environment in an interactive session;
@@ -466,6 +489,9 @@ impl Config {
     ///    (when set and not empty), then `smb.password` from the configuration file;
     /// 3. otherwise a clear error (never a prompt on a pipe).
     pub fn resolve_password(&self) -> Result<String, ConfigError> {
+        if let Some(password) = session_password().clone() {
+            return Ok(password);
+        }
         if std::io::stdin().is_terminal() {
             let target = SmbTarget::parse(&self.smb.url)?;
             loop {

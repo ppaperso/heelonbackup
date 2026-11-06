@@ -1,11 +1,12 @@
 //! Bilingual (EN/FR) labels of the interactive console
 //!
-//! The rest of the application (CLI, errors, logs) stays in English; only
-//! the console display is bilingual. The active language is stored in the
-//! configuration file (`language`: "en" | "fr", default "en") and can be
-//! toggled from the main menu (« Langue / Language »).
-//!
-//! Each guided flow adds its own labels here in its dedicated commit.
+//! The rest of the application (CLI, errors, logs) stays in English; only the
+//! console chrome is bilingual (header, panels, menu, dialogs). The service
+//! output shown in the terminal pane stays in English, like the CLI. The active
+//! language is stored in the configuration file (`language`: "en" | "fr",
+//! default "en") and toggled with the `L` key (« Langue / Language »).
+
+use crate::storage::BackupStatus;
 
 /// Console UI language
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -45,17 +46,66 @@ impl Lang {
     }
 }
 
-/// Console labels, in one language (flow labels are added with their flow)
+/// Console labels, in one language
 pub(crate) struct Strings {
-    pub menu_prompt: &'static str,
+    pub lang: Lang,
+    // header and panels
+    pub env_dev: &'static str,
+    pub env_prod: &'static str,
+    pub panel_nas: &'static str,
+    pub panel_last: &'static str,
+    pub panel_actions: &'static str,
+    pub panel_terminal: &'static str,
+    pub nas_online: &'static str,
+    pub nas_offline: &'static str,
+    pub nas_checking: &'static str,
+    pub nas_no_config: &'static str,
+    pub field_share: &'static str,
+    pub field_folder: &'static str,
+    pub field_sources: &'static str,
+    pub field_retention: &'static str,
+    pub field_encryption: &'static str,
+    pub field_status: &'static str,
+    pub field_date: &'static str,
+    pub field_size: &'static str,
+    pub field_duration: &'static str,
+    pub field_last_ok: &'static str,
+    pub on: &'static str,
+    pub off: &'static str,
+    pub files: &'static str,
+    pub no_history: &'static str,
+    pub stale_warning: &'static str,
+    pub partial: &'static str,
+    pub status_completed: &'static str,
+    pub status_with_errors: &'static str,
+    pub status_failed: &'static str,
+    pub status_in_progress: &'static str,
+    pub terminal_empty: &'static str,
+    pub keys_idle: &'static str,
+    pub keys_busy: &'static str,
+    pub keys_prompt: &'static str,
+    pub running: &'static str,
+    pub busy_refused: &'static str,
+    pub interrupt_requested: &'static str,
+    pub result_ok: &'static str,
+    pub result_warnings: &'static str,
+    pub result_failed: &'static str,
+    pub result_interrupted: &'static str,
+    pub error: &'static str,
+    pub password_prompt: &'static str,
+    pub password_rejected: &'static str,
+    pub editor_running: &'static str,
+    // main menu
     pub menu_backup: &'static str,
     pub menu_status: &'static str,
+    pub menu_list: &'static str,
     pub menu_verify: &'static str,
     pub menu_restore: &'static str,
     pub menu_config: &'static str,
     pub menu_language: &'static str,
     pub menu_quit: &'static str,
     pub language_saved: &'static str,
+    // flows
     pub status_prompt: &'static str,
     pub status_options: [&'static str; 3],
     pub config_prompt: &'static str,
@@ -80,10 +130,88 @@ pub(crate) struct Strings {
     pub restore_run_prompt: &'static str,
 }
 
+impl Strings {
+    /// Localized backup status
+    pub(crate) fn status(&self, status: BackupStatus) -> &'static str {
+        match status {
+            BackupStatus::Completed => self.status_completed,
+            BackupStatus::CompletedWithErrors => self.status_with_errors,
+            BackupStatus::Failed => self.status_failed,
+            BackupStatus::InProgress => self.status_in_progress,
+        }
+    }
+
+    /// `5 min ago` / `il y a 5 min` from an age in seconds
+    pub(crate) fn age(&self, secs: i64) -> String {
+        let secs = secs.max(0);
+        let (n, unit_en, unit_fr) = match secs {
+            0..60 => {
+                return match self.lang {
+                    Lang::En => "just now".into(),
+                    Lang::Fr => "à l'instant".into(),
+                };
+            }
+            60..3600 => (secs / 60, "min", "min"),
+            3600..86400 => (secs / 3600, "h", "h"),
+            _ => (secs / 86400, "days", "jours"),
+        };
+        match self.lang {
+            Lang::En => format!("{n} {unit_en} ago"),
+            Lang::Fr => format!("il y a {n} {unit_fr}"),
+        }
+    }
+}
+
 pub(crate) static EN: Strings = Strings {
-    menu_prompt: "HeelonBackup — what would you like to do?",
+    lang: Lang::En,
+    env_dev: "DEV",
+    env_prod: "PROD",
+    panel_nas: "NAS",
+    panel_last: "Last backup",
+    panel_actions: "Actions",
+    panel_terminal: "Terminal",
+    nas_online: "ONLINE",
+    nas_offline: "OFFLINE",
+    nas_checking: "checking…",
+    nas_no_config: "no valid configuration (Configuration → check)",
+    field_share: "Share",
+    field_folder: "Folder",
+    field_sources: "Sources",
+    field_retention: "Retention",
+    field_encryption: "Encryption",
+    field_status: "Status",
+    field_date: "Date",
+    field_size: "Size",
+    field_duration: "Duration",
+    field_last_ok: "Last success",
+    on: "on",
+    off: "off",
+    files: "files",
+    no_history: "No backup recorded on this computer yet.",
+    stale_warning: "last success is over 7 days old: time for a new backup",
+    partial: "partial",
+    status_completed: "Completed",
+    status_with_errors: "Completed with errors",
+    status_failed: "Failed",
+    status_in_progress: "In progress (or interrupted)",
+    terminal_empty: "Output of the operations appears here.",
+    keys_idle: "↑↓ choose · Enter run · letter = shortcut · L language · PgUp/PgDn scroll · q quit",
+    keys_busy: "Ctrl-C interrupt · PgUp/PgDn scroll",
+    keys_prompt: "↑↓ choose · Enter confirm · Esc cancel",
+    running: "Running:",
+    busy_refused: "An operation is already running (Ctrl-C to interrupt it).",
+    interrupt_requested: "Interruption requested: stopping the transfer…",
+    result_ok: "Finished",
+    result_warnings: "Finished with warnings",
+    result_failed: "Failed",
+    result_interrupted: "Interrupted",
+    error: "Error",
+    password_prompt: "SMB password for",
+    password_rejected: "The NAS rejected the password: it will be asked again.",
+    editor_running: "Editor open in the terminal…",
     menu_backup: "Start a backup",
-    menu_status: "Status",
+    menu_status: "Status / history",
+    menu_list: "Backups on the NAS",
     menu_verify: "Verify a backup",
     menu_restore: "Restore",
     menu_config: "Configuration",
@@ -124,10 +252,56 @@ pub(crate) static EN: Strings = Strings {
 };
 
 pub(crate) static FR: Strings = Strings {
-    menu_prompt: "HeelonBackup — que souhaitez-vous faire ?",
-    menu_backup: "Lancer un backup",
-    menu_status: "Statut",
-    menu_verify: "Vérifier un backup",
+    lang: Lang::Fr,
+    env_dev: "DEV",
+    env_prod: "PROD",
+    panel_nas: "NAS",
+    panel_last: "Dernière sauvegarde",
+    panel_actions: "Actions",
+    panel_terminal: "Terminal",
+    nas_online: "EN LIGNE",
+    nas_offline: "HORS LIGNE",
+    nas_checking: "vérification…",
+    nas_no_config: "configuration invalide (Configuration → check)",
+    field_share: "Partage",
+    field_folder: "Dossier",
+    field_sources: "Sources",
+    field_retention: "Rétention",
+    field_encryption: "Chiffrement",
+    field_status: "Statut",
+    field_date: "Date",
+    field_size: "Taille",
+    field_duration: "Durée",
+    field_last_ok: "Dernier succès",
+    on: "activé",
+    off: "désactivé",
+    files: "fichiers",
+    no_history: "Aucune sauvegarde enregistrée sur cet ordinateur.",
+    stale_warning: "dernier succès il y a plus de 7 jours : lancez une sauvegarde",
+    partial: "partielle",
+    status_completed: "Terminée",
+    status_with_errors: "Terminée avec erreurs",
+    status_failed: "Échec",
+    status_in_progress: "En cours (ou interrompue)",
+    terminal_empty: "La sortie des opérations s'affiche ici.",
+    keys_idle: "↑↓ choisir · Entrée lancer · lettre = raccourci · L langue · PgPréc/PgSuiv défiler · q quitter",
+    keys_busy: "Ctrl-C interrompre · PgPréc/PgSuiv défiler",
+    keys_prompt: "↑↓ choisir · Entrée valider · Échap annuler",
+    running: "En cours :",
+    busy_refused: "Une opération est déjà en cours (Ctrl-C pour l'interrompre).",
+    interrupt_requested: "Interruption demandée : arrêt du transfert…",
+    result_ok: "Terminé",
+    result_warnings: "Terminé avec avertissements",
+    result_failed: "Échec",
+    result_interrupted: "Interrompu",
+    error: "Erreur",
+    password_prompt: "Mot de passe SMB pour",
+    password_rejected: "Le NAS a refusé le mot de passe : il sera redemandé.",
+    editor_running: "Éditeur ouvert dans le terminal…",
+    menu_backup: "Lancer une sauvegarde",
+    menu_status: "Statut / historique",
+    menu_list: "Sauvegardes sur le NAS",
+    menu_verify: "Vérifier une sauvegarde",
     menu_restore: "Restaurer",
     menu_config: "Configuration",
     menu_language: "Langue / Language",
@@ -135,8 +309,8 @@ pub(crate) static FR: Strings = Strings {
     language_saved: "Langue changée : français (enregistrée dans le fichier de configuration).",
     status_prompt: "Que voulez-vous voir ?",
     status_options: [
-        "Résumé du dernier backup",
-        "Dernier backup (détaillé)",
+        "Résumé de la dernière sauvegarde",
+        "Dernière sauvegarde (détaillée)",
         "Historique complet",
     ],
     config_prompt: "Configuration : que voulez-vous faire ?",
@@ -153,16 +327,16 @@ pub(crate) static FR: Strings = Strings {
     backup_paths_prompt: "Chemins à sauvegarder (séparés par des virgules, vide = sources configurées)",
     backup_list_prompt: "Lister tous les fichiers dans le dry-run ?",
     backup_dryrun_prompt: "Faire d'abord un dry-run (recommandé) ?",
-    backup_run_prompt: "Lancer le vrai backup maintenant ?",
-    verify_prompt: "Quel backup voulez-vous vérifier ?",
-    verify_latest: "Dernier backup utilisable",
+    backup_run_prompt: "Lancer la vraie sauvegarde maintenant ?",
+    verify_prompt: "Quelle sauvegarde voulez-vous vérifier ?",
+    verify_latest: "Dernière sauvegarde utilisable",
     verify_deep_prompt: "Vérification approfondie (télécharge chaque fichier et vérifie le SHA-256 ; lent) ?",
-    no_backup_on_nas: "Aucun backup trouvé sur le NAS.",
-    restore_prompt: "Quel backup voulez-vous restaurer ?",
-    restore_latest: "Dernier backup utilisable",
+    no_backup_on_nas: "Aucune sauvegarde trouvée sur le NAS.",
+    restore_prompt: "Quelle sauvegarde voulez-vous restaurer ?",
+    restore_latest: "Dernière sauvegarde utilisable",
     restore_target_prompt: "Dossier cible (vide = emplacements d'origine)",
     restore_paths_prompt: "Restaurer seulement ces chemins (séparés par des virgules, vide = tout)",
-    restore_overwrite_prompt: "Écraser les fichiers existants différents du backup ?",
+    restore_overwrite_prompt: "Écraser les fichiers existants différents de la sauvegarde ?",
     restore_run_prompt: "Lancer la restauration maintenant ?",
 };
 
@@ -182,8 +356,9 @@ mod tests {
 
     #[test]
     fn both_languages_define_the_menu() {
-        for s in [Lang::En.strings(), Lang::Fr.strings()] {
-            assert!(!s.menu_prompt.is_empty());
+        for lang in [Lang::En, Lang::Fr] {
+            let s = lang.strings();
+            assert_eq!(s.lang, lang);
             assert_eq!(s.status_options.len(), 3);
             assert_eq!(s.config_options.len(), 4);
             assert_eq!(s.backup_source_options.len(), 2);
@@ -193,6 +368,26 @@ mod tests {
         assert_ne!(
             Lang::En.strings().menu_backup,
             Lang::Fr.strings().menu_backup
+        );
+    }
+
+    #[test]
+    fn localized_ages() {
+        let (en, fr) = (Lang::En.strings(), Lang::Fr.strings());
+        assert_eq!(en.age(10), "just now");
+        assert_eq!(fr.age(10), "à l'instant");
+        assert_eq!(en.age(300), "5 min ago");
+        assert_eq!(fr.age(7200), "il y a 2 h");
+        assert_eq!(fr.age(3 * 86400), "il y a 3 jours");
+        assert_eq!(en.age(-5), "just now");
+    }
+
+    #[test]
+    fn localized_statuses() {
+        assert_eq!(Lang::Fr.strings().status(BackupStatus::Failed), "Échec");
+        assert_eq!(
+            Lang::En.strings().status(BackupStatus::Completed),
+            "Completed"
         );
     }
 }

@@ -1,6 +1,7 @@
-//! Console flow: status of the local backup history
+//! Console flows: status of the local backup history, backups stored on the NAS
 
 use super::{Strings, select};
+use crate::config::Config;
 use crate::error::Result;
 use crate::service::{self, Exit};
 use std::path::Path;
@@ -21,6 +22,15 @@ pub(crate) async fn run(s: &'static Strings, _config_path: &Path) -> Result<Exit
     };
     let (all, detailed) = status_view(index);
     Ok(service::status::status(all, detailed))
+}
+
+/// Backups on the NAS: same `service::status::list` as `heelonbackup list`
+pub(crate) async fn run_list(s: &'static Strings, config_path: &Path) -> Result<Exit> {
+    let config = Config::load(config_path)?;
+    if !super::ensure_password(s, &config).await? {
+        return Ok(Exit::Success); // password dialog cancelled
+    }
+    service::status::list(&config).await
 }
 
 #[cfg(test)]

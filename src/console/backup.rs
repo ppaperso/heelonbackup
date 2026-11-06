@@ -59,6 +59,9 @@ pub(crate) async fn run(s: &'static Strings, config_path: &Path) -> Result<Exit>
     // 3. the real backup only runs after an explicit confirmation
     match confirm(s.backup_run_prompt, s.yes, s.no, false).await? {
         Some(true) => {
+            if !super::ensure_password(s, &config).await? {
+                return Ok(Exit::Success); // password dialog cancelled
+            }
             backup::run(
                 &config,
                 BackupRequest {

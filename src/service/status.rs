@@ -11,7 +11,8 @@ use crate::storage::{BackupManifest, BackupStatus, LocalHistory};
 use crate::ui;
 use chrono::Local;
 
-const STALE_DAYS: i64 = 7;
+/// A last successful backup older than this is flagged as stale
+pub(crate) const STALE_DAYS: i64 = 7;
 
 pub fn status(all: bool, detailed: bool) -> Exit {
     let history = LocalHistory::open().load_all();

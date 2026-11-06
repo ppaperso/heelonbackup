@@ -5,6 +5,7 @@ use crate::config::Config;
 use crate::error::Result;
 use crate::service::Exit;
 use crate::service::restore::{self, RestoreRequest};
+use crate::ui;
 use std::path::{Path, PathBuf};
 
 /// Restore flow: picks a backup, a target and optional paths, runs a dry run
@@ -12,11 +13,14 @@ use std::path::{Path, PathBuf};
 /// restore after an explicit confirmation.
 pub(crate) async fn run(s: &'static Strings, config_path: &Path) -> Result<Exit> {
     let config = Config::load(config_path)?;
+    if !super::ensure_password(s, &config).await? {
+        return Ok(Exit::Success); // password dialog cancelled
+    }
     let client = crate::service::remote::connect(&config).await?;
     let base = config.remote_base()?;
     let summaries = crate::service::remote::load_summaries(&client, &base).await?;
     if summaries.is_empty() {
-        println!("{}", s.no_backup_on_nas);
+        ui::say!("{}", s.no_backup_on_nas);
         return Ok(Exit::Success);
     }
     let mut items: Vec<&str> = Vec::with_capacity(summaries.len() + 1);
