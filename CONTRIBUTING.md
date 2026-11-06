@@ -106,7 +106,7 @@ This project is expected to **stay up to date**:
 - **Patch/minor updates**: apply without discussion.
 - **Major updates** (e.g. `dirs 6 → 7`, `sha2 0.10 → 0.11`): read the crate's changelog, adapt the code to the breaking changes, and run the targeted tests of the affected modules (`just test-hasher`, etc.) in addition to the full test suite.
 - Run `cargo audit` and address any known vulnerabilities **as a priority**.
-- `Cargo.lock` is committed and must be updated together with `Cargo.toml`; the MSRV declared in `Cargo.toml` (Rust 1.87) must still hold after updates.
+- `Cargo.lock` is committed and must be updated together with `Cargo.toml`; the MSRV declared in `Cargo.toml` (Rust 1.99) must still hold after updates.
 - Put dependency updates in a dedicated commit (e.g. `chore(deps): bump dirs to 7 and sha2 to 0.11`), never mixed with functional changes.
 
 #### Pull Request Guidelines
@@ -148,7 +148,7 @@ You can also contribute by:
 
 ### Prerequisites
 
-- Rust 2024 edition (latest stable recommended, MSRV 1.87)
+- Rust 2024 edition (latest stable recommended, MSRV 1.99)
 - `smbclient` installed (`sudo dnf install samba-client` or equivalent)
 - Git
 - Cargo (comes with Rust)

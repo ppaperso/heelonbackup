@@ -29,7 +29,7 @@ If applicable, add screenshots or log output to help explain your problem.
 Please complete the following information:
 - OS: [e.g., Fedora 44]
 - OS Version: [e.g., 6.8.12]
-- Rust Version: [e.g., 1.87.0]
+- Rust Version: [e.g., 1.99.1]
 - HeelonBackup Version: [e.g., 0.1.0]
 - NAS Model: [e.g., Synology DS224+]
 - SMB Version: [e.g., SMB3]

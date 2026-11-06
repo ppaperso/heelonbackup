@@ -26,7 +26,7 @@
 
 ### System
 - Linux Fedora 44+ (or any recent distribution with glibc 2.34+)
-- Rust 2024 edition (latest stable version recommended)
+- Rust 1.99+ (MSRV, edition 2024; latest stable recommended)
 - `smbclient` installed: `sudo dnf install samba-client`
 - `cifs-utils` for CIFS mounts (optional)
 
