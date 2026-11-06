@@ -163,6 +163,9 @@ pub struct Config {
     /// Log level for diagnostics (error, warn, info, debug, trace)
     #[serde(default = "default_log_level")]
     pub log_level: String,
+    /// Language of the interactive console ("en" or "fr")
+    #[serde(default = "default_language")]
+    pub language: String,
 }
 
 fn default_timeout() -> u64 {
@@ -196,6 +199,10 @@ fn default_retention() -> usize {
 
 fn default_log_level() -> String {
     "warn".to_string()
+}
+
+fn default_language() -> String {
+    "en".to_string()
 }
 
 impl Default for BackupConfig {
@@ -243,6 +250,7 @@ impl Default for Config {
             backup: BackupConfig::default(),
             storage: StorageConfig::default(),
             log_level: default_log_level(),
+            language: default_language(),
         }
     }
 }
@@ -397,6 +405,12 @@ impl Config {
                 "backup.workers must be between 1 and 16".into(),
             ));
         }
+        if self.language != "en" && self.language != "fr" {
+            return Err(ConfigError::Invalid(format!(
+                "language must be \"en\" or \"fr\" (got `{}`)",
+                self.language
+            )));
+        }
         self.remote_base()?;
         Ok(())
     }
@@ -538,6 +552,28 @@ mod tests {
             Environment::Dev.history_dir().parent(),
             Some(Environment::Dev.config_path().parent().unwrap())
         );
+    }
+
+    #[test]
+    fn language_defaults_to_en_and_is_validated() {
+        let mut config = Config::default();
+        assert_eq!(config.language, "en");
+        assert!(config.validate().is_ok());
+        config.language = "fr".into();
+        assert!(config.validate().is_ok());
+        config.language = "de".into();
+        let err = config.validate().unwrap_err();
+        assert!(matches!(err, ConfigError::Invalid(_)));
+        assert!(err.to_string().contains("language"));
+    }
+
+    #[test]
+    fn legacy_config_without_language_is_en() {
+        let json = r#"{"smb":{"url":"smb://nas/b","username":"u"},
+            "backup":{"sources":["/tmp"]}}"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(config.language, "en");
+        assert!(config.validate().is_ok());
     }
 
     #[test]

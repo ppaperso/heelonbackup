@@ -184,6 +184,13 @@ Voici une explication détaillée de toutes les options de configuration :
 }
 ```
 
+#### Options Générales
+
+| Option | Type | Requis | Défaut | Description |
+|--------|------|--------|--------|-------------|
+| `log_level` | string | Non | "warn" | Niveau de logs de diagnostic (error, warn, info, debug, trace) |
+| `language` | string | Non | "en" | Langue de la console interactive : « en » ou « fr » (modifiable via l'entrée « Langue / Language » du menu) |
+
 ### Variables d'Environnement
 
 HeelonBackup prend en charge les variables d'environnement suivantes :

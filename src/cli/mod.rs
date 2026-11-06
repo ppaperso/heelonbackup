@@ -99,8 +99,9 @@ pub async fn run() -> ExitCode {
 
     // No subcommand: open the interactive console (same dev banner, same logging setup)
     let Some(command) = cli.command else {
-        init_logging(verbose, None);
-        return exit_code(crate::console::run().await);
+        let log_level = Config::load(&config_path).ok().map(|c| c.log_level);
+        init_logging(verbose, log_level.as_deref());
+        return exit_code(crate::console::run(&config_path).await);
     };
 
     let result = match command {

@@ -1,10 +1,12 @@
-//! Flux « restaurer » de la console (squelette phase 2 ; collecte des choix en phase 3)
+//! Console flow stub (implemented in its own phase 3 commit)
 
+use super::Strings;
 use crate::error::Result;
 use crate::service::Exit;
+use std::path::Path;
 
-/// Stub : aucun appel à l'orchestration métier, on revient au menu
-pub(crate) async fn run() -> Result<Exit> {
-    println!("flux restore : à implémenter en phase 3");
+/// Stub: no business logic yet, back to the menu
+pub(crate) async fn run(s: &'static Strings, _config_path: &Path) -> Result<Exit> {
+    println!("{}", s.stub);
     Ok(Exit::Success)
 }
