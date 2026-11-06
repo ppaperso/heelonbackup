@@ -7,8 +7,10 @@
 
 pub(crate) mod backup;
 pub(crate) mod config;
+pub(crate) mod history;
 pub(crate) mod remote;
 pub(crate) mod restore;
+pub(crate) mod seal;
 pub(crate) mod status;
 pub(crate) mod verify;
 

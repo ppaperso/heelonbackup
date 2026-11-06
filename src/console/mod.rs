@@ -16,6 +16,7 @@ mod backup;
 mod config;
 mod prompt;
 mod restore;
+mod seal;
 mod status;
 mod strings;
 mod validate;
@@ -281,6 +282,7 @@ impl Dashboard {
                 Action::List => status::run_list(s, &path).await,
                 Action::Verify => verify::run(s, &path).await,
                 Action::Restore => restore::run(s, &path).await,
+                Action::Seal => seal::run(s, &path).await,
                 Action::Config => config::run(s, &path).await,
                 Action::Language | Action::Quit => Ok(Exit::Success),
             }

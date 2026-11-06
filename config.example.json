@@ -26,6 +26,17 @@
     "base_dir": "heelonbackup",
     "retention": 5
   },
+  "sealed": {
+    "staging_dir": "/home/user/.local/share/heelonbackup/sealed",
+    "secret": {
+      "tool": "secret-tool",
+      "attribute": "heelonbackup",
+      "key": "seal"
+    },
+    "items": [
+      { "path": "/home/user/.ssh", "archive": "ssh.tar.gz.age" }
+    ]
+  },
   "log_level": "warn",
   "language": "en"
 }

@@ -295,6 +295,116 @@ This will:
 4. Verify the integrity of transferred files
 5. Create a manifest with all backup metadata
 
+### Sealing Sensitive Sources
+
+SMB3 encrypts transport, not files stored on the NAS. Configure
+[sealed sources](configuration.md#sealed-sources) to protect SSH keys at rest.
+Remove `~/.ssh` from ordinary sources; a parent source can remain, because sealed
+paths are automatically excluded from plaintext scans. No executable `age` is
+needed for sealing: its encryption library is integrated.
+
+**Everything can be done from the console**, without preparation commands:
+
+1. **Seal sensitive sources (`e`) → Add/update a sealed source**: select `~/.ssh`,
+   `ssh.tar.gz.age` and the suggested staging directory. A plan is shown before
+   confirmation of the configuration save; other sources are preserved.
+   Repeat to add other sensitive items.
+2. **`e` → Store/replace recovery passphrase in keyring**: confirm the warning,
+   then enter the masked passphrase twice. It is never saved in JSON. The session
+   keyring must be unlocked. Keep an offline copy: replacing the secret does not
+   re-encrypt old archives, which still need their old passphrase. A configured
+   `HEELONBACKUP_SEAL_PASSPHRASE` environment override remains higher priority.
+3. **`e` → Back up sealed archives only**: mandatory dry-run, explicit confirmation
+   that NAS deletion has finished, then masked SMB authentication. Archives are
+   refreshed automatically before transfer. This is a partial backup and never
+   triggers full-backup retention. The same choice is available under **Start a backup**.
+
+To forget summaries of backups already deleted from the NAS:
+**Status / history (`s`) → Clear local history** lists the files and asks for
+confirmation (No by default). Only summaries from the current environment are
+removed; configuration, source files, symlinks, directories and NAS backups are
+preserved. The dashboard reloads history after the operation. No NAS connection
+is required.
+
+Store a **strong, unique recovery passphrase** in the session keyring once.
+`secret-tool store` accepts it on stdin; this Bash example reads it without echo
+or putting it in process arguments:
+
+```bash
+read -r -s -p 'Seal passphrase: ' seal_passphrase; printf '\n'
+printf '%s' "$seal_passphrase" | secret-tool store --label="heelonbackup seal" heelonbackup seal
+unset seal_passphrase
+heelonbackup seal --dry-run
+heelonbackup seal
+```
+
+Keep the passphrase separately in an offline password manager/recovery kit.
+Do not verify it by printing `secret-tool lookup` output. Cron may lack an unlocked
+keyring or session bus; unlock the keyring through your desktop session, or use a
+trusted provider for `HEELONBACKUP_SEAL_PASSPHRASE`. `secret-tool` has no `unlock`
+subcommand. Lookup failure or timeout blocks backup, never falls back to plaintext.
+
+Each real backup refreshes all encrypted archives automatically. Staging is
+created with mode 0700, archives with 0600; full backups include them automatically
+without adding staging as a source. Dry-runs do not read the keyring or write
+archives, and cannot estimate the new archive sizes. Partial runs include archives
+only when their selected paths overlap sensitive sources or staging.
+
+To recover, restore the encrypted file normally, then install `age` (or compatible
+`rage`) on the recovery machine. In a **new private recovery directory**, decrypt
+completely before extracting; do not pipe unauthenticated partial output into tar:
+
+```bash
+heelonbackup restore BACKUP --target /tmp/restore \
+  --path /home/user/.local/share/heelonbackup/sealed/ssh.tar.gz.age
+umask 077
+mkdir /tmp/ssh-recovery
+# age asks for the independently saved passphrase
+age -d -o /tmp/ssh-recovery/ssh.tar.gz \
+  /tmp/restore/home/user/.local/share/heelonbackup/sealed/ssh.tar.gz.age &&
+  tar xzf /tmp/ssh-recovery/ssh.tar.gz -C /tmp/ssh-recovery
+```
+
+Inspect the recovered `.ssh` before copying it home; remove the plaintext recovery
+archive when finished. **Old NAS backups containing plaintext keys are not changed.**
+Remove those copies (including snapshots/recycle bins) and rotate exposed private
+keys if the NAS or its accounts may have been compromised.
+
+### Finding Old Private Keys on a Mounted Share
+
+```bash
+just scan-cles-nas /mnt/beestation
+# Read all file sizes (slower):
+MAX_BYTES=0 just scan-cles-nas /mnt/beestation
+# Keep the progress bar out of the saved report:
+just scan-cles-nas /mnt/beestation > key-report.txt
+```
+
+The script requires Python 3.15.0 minimum, with `python3.15` available on PATH,
+and no additional packages. Scanner tests run explicitly on Python 3.15. It is
+read-only and never prints file contents. It inventories one filesystem without
+following symlinks, then reads files in chunks, including binary files. On a
+terminal, stderr shows byte progress, file and detection counts, elapsed time
+and estimated time remaining. Inventory uses an indeterminate indicator because
+the total is not yet known. Redirected output contains no animated progress.
+
+The path must be a local directory on an **already mounted** share, not an
+`smb://` URL. Skipped links and nested mounts are displayed: scan each actual
+target separately. An inventory with no files returns **2** and reports an
+incomplete search, even when the local directory exists.
+
+`NOM_SUSPECT` identifies a suspicious name, not evidence of a leak. `CLE_PRIVEE`
+identifies a private-key marker (OpenSSH, PEM, PuTTY), not necessarily a key owned
+by your account. Paths are JSON-escaped to handle spaces/newlines safely without
+injecting terminal commands.
+
+Exit codes: **0** no markers in examined files, **1** markers found, **2**
+incomplete search/error, **130** interrupted. The default size limit is 10 MiB,
+inclusive; larger files make the search incomplete. `MAX_BYTES=0` removes this
+limit. Errors are reported explicitly. Archives are not decompressed and encrypted
+files are not decrypted; check recycle bins, snapshots and other shares separately.
+Even a result with no markers cannot guarantee that no copies remain.
+
 ### Monitoring Progress
 
 During the backup, you'll see:
@@ -423,11 +533,12 @@ Running `heelonbackup` **without a subcommand** opens the interactive console, a
 Actions:
 
 - **Start a backup**: the configured sources are listed first (✓ found, ✗ missing, plus the number of exclude patterns), then you choose between them (full backup, applies retention) and specific files/folders (partial backup, never triggers retention); a **dry run is always proposed first**, and a real transfer only starts after an explicit confirmation.
-- **Status / history**: last backup summary, detailed view, or full local history (same output as `heelonbackup status`).
+- **Status / history**: summary, detailed view, full history, or confirmed cleanup of local summaries only.
 - **Backups on the NAS**: every backup stored on the NAS (same output as `heelonbackup list`).
 - **Verify a backup**: pick a backup on the NAS (or the latest usable one), with optional deep SHA-256 verification.
 - **Restore**: pick a backup, a target folder (empty = original locations) and optional path filters; a dry run is always run first.
-- **Configuration**: show the configuration file, show the sources and exclude patterns, validate it, print its path, or open it in `$EDITOR` (the dashboard steps aside while the editor runs).
+- **Seal sensitive sources** (`e`): local archive creation, sealed-only backup (mandatory dry-run), adding/updating a source, or masked keyring passphrase storage. Writes/transfers require confirmation.
+- **Configuration**: show, sources/exclusions, check, path, external editor, or guided sealed-source configuration.
 - **Langue / Language** (`L`): switch the console between English and French; the choice is saved in the configuration file (`"language": "en"` or `"fr"`, default `"en"`). The operation output in the terminal pane stays in English, like the CLI.
 
 Every flow uses the same engine as the CLI commands, so the output in the terminal pane is identical to the CLI output. The SMB password is asked **once per console session** in a masked dialog (never displayed), kept in memory only and forgotten when the console closes or when the NAS rejects it; `HEELONBACKUP_SMB_PASSWORD` is only used for non-interactive runs. In a dialog, `Esc` / `Ctrl-C` cancel and go back. While an operation runs, `Ctrl-C` interrupts it and the dashboard stays open; otherwise `q`, `Esc` or `Ctrl-C` quit (exit code 0). Without a terminal, the console refuses to start (exit code 1). Passing any subcommand keeps the classic CLI behavior.

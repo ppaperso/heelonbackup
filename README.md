@@ -21,6 +21,20 @@
 - ✅ **Flexible Configuration**: JSON configuration with sources, exclusions, authentication
 - ✅ **Progress Tracking**: Real-time progress bars with ETA
 - ✅ **Local History**: Backup history stored on your machine
+- ✅ **Sealed Sources**: Optional authenticated age archives of sensitive files, created automatically before backup (CLI `seal`, console `e`). See [setup and recovery](docs/user_guide.md#sealing-sensitive-sources).
+
+### Release notes — 0.2.0
+
+- Optional `sealed` configuration, local `seal --dry-run`, and automatic pre-backup
+  sealing shared by CLI and console.
+- Plaintext exclusion of sensitive paths, private atomic archives, and a staging
+  lock held through transfer. Existing configurations behave as before.
+- Uses the age 0.11 maintenance line: age 0.12 currently introduces a transitive
+  cryptographic dependency flagged by `cargo audit`. Audit still reports
+  unmaintained build dependencies; these are not suppressed.
+- Guided console setup of sealed sources and masked keyring passphrases, sealed-only
+  backups with mandatory preview, and confirmed local history cleanup. CLI equivalents:
+  `backup --sealed-only`, `seal --set-passphrase`, `history clear --yes`.
 
 ## 📋 Requirements
 

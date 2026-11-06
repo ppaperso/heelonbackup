@@ -38,6 +38,9 @@ pub enum BackupError {
     #[error("invalid path: {0}")]
     InvalidPath(String),
 
+    #[error("cannot seal sensitive sources: {0}")]
+    Seal(String),
+
     #[error("operation interrupted by user")]
     Interrupted,
 }

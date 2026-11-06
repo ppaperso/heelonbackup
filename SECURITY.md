@@ -102,7 +102,9 @@ HeelonBackup uses the system `smbclient` for SMB operations. Security considerat
 
 - **Without Encryption**: Data transmitted via SMB may be visible on the network
 - **With Encryption**: SMB3 encryption protects data in transit (enabled by default)
-- **At Rest**: Data on the NAS is stored as-is; consider NAS-side encryption if needed
+- **At Rest**: Ordinary files are stored as-is. Optional [sealed sources](docs/configuration.md#sealed-sources)
+  use authenticated age encryption before transfer; only encrypted archives reach
+  the NAS. This does not retroactively protect existing plaintext backups.
 
 ### Password Storage
 

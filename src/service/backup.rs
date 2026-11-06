@@ -2,7 +2,7 @@
 //!
 //! Called identically by `heelonbackup backup` (cli) and the console backup flow.
 
-use super::{Exit, expand_tilde, remote};
+use super::{Exit, expand_tilde, remote, seal};
 use crate::backup::{Excludes, ScanReport, scan};
 use crate::config::{Config, SmbTarget};
 use crate::error::{BackupError, Result};
@@ -52,26 +52,37 @@ fn effective_config(config: &Config, request: &BackupRequest) -> Config {
     config
 }
 
-fn resolve_sources(config: &Config, request: &BackupRequest) -> Result<Vec<PathBuf>> {
+fn resolve_sources(
+    config: &Config,
+    request: &BackupRequest,
+    sealed: Option<&seal::Plan>,
+) -> Result<Vec<PathBuf>> {
     let mut sources = Vec::new();
     if request.paths.is_empty() {
         for source in &config.backup.sources {
             let path = expand_tilde(source);
+            if let Some(path) = sealed.and_then(|plan| plan.pending_source(&path)) {
+                sources.push(path);
+                continue;
+            }
             match path.canonicalize() {
                 Ok(p) => sources.push(p),
                 Err(e) => warn!("Source {} ignored: {e}", path.display()),
             }
         }
-        if sources.is_empty() {
+        if sources.is_empty() && sealed.is_none() {
             return Err(BackupError::InvalidPath(
                 "none of the configured sources exists (backup.sources)".into(),
             ));
         }
     } else {
         for path in &request.paths {
-            let canonical = path
-                .canonicalize()
-                .map_err(|e| BackupError::InvalidPath(format!("{}: {e}", path.display())))?;
+            let canonical = match sealed.and_then(|plan| plan.pending_source(path)) {
+                Some(path) => path,
+                None => path
+                    .canonicalize()
+                    .map_err(|e| BackupError::InvalidPath(format!("{}: {e}", path.display())))?,
+            };
             sources.push(canonical);
         }
     }
@@ -80,8 +91,13 @@ fn resolve_sources(config: &Config, request: &BackupRequest) -> Result<Vec<PathB
     Ok(sources)
 }
 
-async fn scan_sources(config: &Config, sources: Vec<PathBuf>) -> Result<ScanReport> {
-    let excludes = Excludes::new(&config.backup.excludes)?;
+async fn scan_sources(
+    config: &Config,
+    sources: Vec<PathBuf>,
+    protected: Vec<PathBuf>,
+) -> Result<ScanReport> {
+    let mut excludes = Excludes::new(&config.backup.excludes)?;
+    excludes.protect(protected);
     let max_size = config.backup.max_file_size;
     let spinner = ui::spinner("Scanning files...");
     let pb = spinner.clone();
@@ -99,12 +115,66 @@ async fn scan_sources(config: &Config, sources: Vec<PathBuf>) -> Result<ScanRepo
     Ok(report)
 }
 
+async fn scan_archives(config: &Config, archives: Vec<PathBuf>) -> Result<ScanReport> {
+    let mut archive_config = config.clone();
+    archive_config.backup.excludes.clear();
+    let archived = scan_sources(&archive_config, archives.clone(), Vec::new()).await?;
+    if !archived.skipped.is_empty() || archived.files.len() != archives.len() {
+        return Err(BackupError::Seal(
+            "a required archive cannot be backed up; check readability and backup.max_file_size"
+                .into(),
+        ));
+    }
+    Ok(archived)
+}
+
 pub async fn run(config: &Config, request: BackupRequest) -> Result<Exit> {
     // request overrides (workers, max_file_size) apply to the whole run
     let config = effective_config(config, &request);
-    let sources = resolve_sources(&config, &request)?;
+    Excludes::new(&config.backup.excludes)?;
+    let sealed = config.sealed.as_ref().map(seal::Plan::new).transpose()?;
+    let mut sources = resolve_sources(&config, &request, sealed.as_ref())?;
+    let include_archives = sealed
+        .as_ref()
+        .is_some_and(|plan| plan.includes_archives(&sources, request.paths.is_empty()));
+    let protected = sealed
+        .as_ref()
+        .map_or_else(Vec::new, seal::Plan::protected_paths);
+    if let Some(plan) = &sealed {
+        seal::print_plan(plan);
+        sources.retain(|source| !protected.iter().any(|root| source.starts_with(root)));
+        if request.dry_run {
+            ui::say!(
+                "Dry run: archives will be refreshed before execution; no keyring access or writes."
+            );
+            if include_archives {
+                ui::say!("Planned archives are not included in scan counts or size estimates.");
+            }
+        }
+    }
+    // Retain the lock until the transfer finishes, so a concurrent seal cannot replace its inputs.
+    let _sealed_guard = if !request.dry_run {
+        match &sealed {
+            Some(plan) => Some(seal::create(plan.clone()).await?),
+            None => None,
+        }
+    } else {
+        None
+    };
     let started = Instant::now();
-    let report = scan_sources(&config, sources.clone()).await?;
+    let mut report = scan_sources(&config, sources.clone(), protected).await?;
+    if include_archives && !request.dry_run {
+        let archives = sealed
+            .as_ref()
+            .expect("include_archives requires a sealing plan")
+            .archives();
+        // Configured globs may not silently omit a required encrypted archive.
+        let archived = scan_archives(&config, archives.clone()).await?;
+        sources.extend(archives);
+        report.total_size += archived.total_size;
+        report.files.extend(archived.files);
+        report.files.sort_unstable_by(|a, b| a.key.cmp(&b.key));
+    }
     let history = LocalHistory::open();
     let base = config.remote_base()?;
     let target = SmbTarget::parse(&config.smb.url)?;
@@ -121,6 +191,12 @@ pub async fn run(config: &Config, request: BackupRequest) -> Result<Exit> {
     );
 
     if report.files.is_empty() {
+        if include_archives && request.dry_run {
+            ui::say!(
+                "Only sealed archives are planned; their contents are not read during a dry run."
+            );
+            return Ok(Exit::Success);
+        }
         print_nothing_to_back_up();
         return Ok(if report.skipped.is_empty() {
             Exit::Success
@@ -542,6 +618,78 @@ mod tests {
         let effective = effective_config(&config, &BackupRequest::default());
         assert_eq!(effective.backup.workers, 3);
         assert_eq!(effective.backup.max_file_size, 999);
+    }
+
+    #[tokio::test]
+    async fn sealed_backup_scan_never_includes_plaintext_or_unlisted_staging_files() {
+        use crate::config::{SealSecret, SealedConfig, SealedItem};
+        use std::fs;
+        use std::os::unix::fs::PermissionsExt;
+        let dir = tempfile::tempdir().unwrap();
+        let sensitive = dir.path().join(".ssh");
+        let staging = dir.path().join("sealed");
+        fs::create_dir(&sensitive).unwrap();
+        fs::create_dir(&staging).unwrap();
+        fs::set_permissions(&staging, fs::Permissions::from_mode(0o700)).unwrap();
+        fs::write(sensitive.join("id_test"), b"synthetic key").unwrap();
+        fs::write(dir.path().join("ordinary"), b"data").unwrap();
+        fs::write(staging.join("accidental-plaintext"), b"secret").unwrap();
+        let archive = staging.join("ssh.tar.gz.age");
+        fs::write(&archive, b"synthetic ciphertext").unwrap();
+        let mut config = Config::default();
+        config.backup.sources = vec![dir.path().to_str().unwrap().into()];
+        config.sealed = Some(SealedConfig {
+            staging_dir: staging.to_str().unwrap().into(),
+            secret: SealSecret::default(),
+            items: vec![SealedItem {
+                path: sensitive.to_str().unwrap().into(),
+                archive: "ssh.tar.gz.age".into(),
+            }],
+        });
+        let plan = seal::Plan::new(config.sealed.as_ref().unwrap()).unwrap();
+        let sources = resolve_sources(&config, &BackupRequest::default(), Some(&plan)).unwrap();
+        let report = scan_sources(&config, sources, plan.protected_paths())
+            .await
+            .unwrap();
+        assert_eq!(report.files.len(), 1);
+        assert_eq!(report.files[0].path, dir.path().join("ordinary"));
+        let explicit = scan_sources(
+            &config,
+            vec![sensitive.join("id_test")],
+            plan.protected_paths(),
+        )
+        .await
+        .unwrap();
+        assert!(explicit.files.is_empty());
+        config.backup.excludes = vec!["*.age".into()];
+        assert_eq!(
+            scan_archives(&config, vec![archive.clone()])
+                .await
+                .unwrap()
+                .files
+                .len(),
+            1
+        );
+        config.backup.max_file_size = 1;
+        assert!(scan_archives(&config, vec![archive.clone()]).await.is_err());
+        config.backup.max_file_size = 0;
+        fs::remove_file(&archive).unwrap();
+        let external = dir.path().join("external");
+        fs::write(&external, b"must not follow a staged archive symlink").unwrap();
+        std::os::unix::fs::symlink(&external, &archive).unwrap();
+        let selected = resolve_sources(
+            &config,
+            &BackupRequest {
+                paths: vec![archive.clone()],
+                ..Default::default()
+            },
+            Some(&plan),
+        )
+        .unwrap();
+        assert_eq!(selected, vec![archive.clone()]);
+        assert!(scan_archives(&config, vec![archive.clone()]).await.is_err());
+        fs::remove_file(&archive).unwrap();
+        assert!(scan_archives(&config, vec![archive]).await.is_err());
     }
 
     #[test]

@@ -24,10 +24,17 @@ pub(crate) async fn run(s: &'static Strings, config_path: &Path) -> Result<Exit>
         s.backup_source_options[0],
         config.backup.sources.len()
     );
-    let options = [configured.as_str(), s.backup_source_options[1]];
+    let options = [
+        configured.as_str(),
+        s.backup_source_options[1],
+        s.backup_source_options[2],
+    ];
     let Some(source) = select(s.backup_source_prompt, &options, 0).await? else {
         return Ok(Exit::Success); // Esc / Ctrl-C: back to the menu
     };
+    if source == 2 {
+        return super::seal::backup_only(s, config_path).await;
+    }
     let paths = if use_configured_sources(source) {
         Vec::new()
     } else {

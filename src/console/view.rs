@@ -411,7 +411,13 @@ fn draw_dialog(frame: &mut Frame, app: &App, s: &Strings) {
     let Some(dialog) = &app.dialog else {
         return;
     };
-    let width = (dialog.title.chars().count() as u16 + 8).clamp(50, 90);
+    let title_width = dialog
+        .title
+        .lines()
+        .map(|line| Line::from(line).width())
+        .max()
+        .unwrap_or(0);
+    let width = (title_width.min(82) as u16 + 8).clamp(50, 90);
     let block = Block::bordered()
         .border_type(BorderType::Double)
         .border_style(Style::new().fg(Color::Cyan))
@@ -421,16 +427,15 @@ fn draw_dialog(frame: &mut Frame, app: &App, s: &Strings) {
     match &dialog.kind {
         Kind::Select { items, .. } => {
             let visible = items.len().min(12) as u16;
-            let area = centered(frame.area(), width, visible + 4);
+            let title_height = dialog.title.lines().count().min(u16::MAX as usize - 15) as u16 + 1;
+            let area = centered(frame.area(), width, visible + title_height + 2);
             frame.render_widget(Clear, area);
             let inner = block.inner(area);
             frame.render_widget(block, area);
             let [title, list_area] =
-                Layout::vertical([Constraint::Length(2), Constraint::Min(1)]).areas(inner);
-            frame.render_widget(
-                Paragraph::new(Line::from(dialog.title.clone()).bold()),
-                title,
-            );
+                Layout::vertical([Constraint::Length(title_height), Constraint::Min(1)])
+                    .areas(inner);
+            frame.render_widget(Paragraph::new(dialog.title.clone()).bold(), title);
             let list = List::new(items.iter().map(|i| ListItem::new(format!(" {i}"))))
                 .highlight_style(Style::new().bg(Color::Cyan).fg(Color::Black).bold())
                 .highlight_symbol("❯");
@@ -482,7 +487,11 @@ mod tests {
     use tokio::sync::oneshot;
 
     fn render(app: &App) -> String {
-        let mut terminal = Terminal::new(TestBackend::new(110, 30)).unwrap();
+        render_at_size(app, 110, 30)
+    }
+
+    fn render_at_size(app: &App, width: u16, height: u16) -> String {
+        let mut terminal = Terminal::new(TestBackend::new(width, height)).unwrap();
         terminal.draw(|f| draw(f, app)).unwrap();
         let buffer = terminal.backend().buffer().clone();
         buffer
@@ -491,6 +500,34 @@ mod tests {
             .map(|row| row.iter().map(|c| c.symbol()).collect::<String>())
             .collect::<Vec<_>>()
             .join("\n")
+    }
+
+    #[test]
+    fn keyring_warning_and_choices_are_fully_visible_in_both_languages() {
+        for lang in [Lang::En, Lang::Fr] {
+            let s = lang.strings();
+            for width in [50, 80, 110] {
+                let mut app = App::new(lang);
+                let (tx, _rx) = oneshot::channel();
+                app.dialog = Some(Dialog::new(
+                    s.seal_secret_warning.into(),
+                    Kind::Select {
+                        items: vec![s.yes.into(), s.no.into()],
+                        default: 1,
+                    },
+                    tx,
+                ));
+                let screen = render_at_size(&app, width, 24);
+                for line in s.seal_secret_warning.lines() {
+                    assert!(
+                        screen.contains(line),
+                        "missing warning at width {width}: {line}"
+                    );
+                }
+                assert!(screen.contains(s.yes));
+                assert!(screen.contains(&format!("❯ {}", s.no)));
+            }
+        }
     }
 
     #[test]

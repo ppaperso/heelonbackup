@@ -1,6 +1,6 @@
 [package]
 name = "heelonbackup"
-version = "0.1.0"
+version = "0.2.0"
 edition = "2024"
 authors = ["heelon"]
 description = "Reliable backup tool for Linux to Synology NAS (BeeStation) via SMB"
@@ -39,6 +39,11 @@ tempfile = "3.10"
 # Hashing
 sha2 = "0.11"
 hex = "0.4"
+
+# Authenticated, streaming archives of sensitive sources
+age = "0.11.3"
+flate2 = "1.1"
+tar = "0.4"
 
 # Logging
 tracing = "0.1"

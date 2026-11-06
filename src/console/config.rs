@@ -23,6 +23,9 @@ pub(crate) async fn run(s: &'static Strings, config_path: &Path) -> Result<Exit>
     let Some(index) = select(s.config_prompt, &s.config_options, 0).await? else {
         return Ok(Exit::Success); // Esc / Ctrl-C: back to the menu
     };
+    if index == 5 {
+        return super::seal::configure(s, config_path).await;
+    }
     let action = config_action(index);
     if action == service::config::Action::Edit {
         ui::say!("{}", s.editor_running);

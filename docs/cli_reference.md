@@ -14,6 +14,8 @@ This document provides a complete reference for all HeelonBackup command-line op
 8. [config](#config)
 9. [completions](#completions)
 10. [Interactive Mode (no subcommand)](#interactive-mode-no-subcommand)
+11. [seal](#seal)
+12. [history](#history)
 
 ## Global Options
 
@@ -66,6 +68,7 @@ heelonbackup backup [OPTIONS] [PATHS]...
 | `--exclude` | `-e` | PATTERN | Extra exclude pattern (glob), **appended** to `backup.excludes` (repeatable) | N/A |
 | `--workers` | `-w` | NUMBER | Parallel SMB sessions for this backup; overrides `backup.workers` (1-16) | CPU count (clamped 1-4) |
 | `--max-file-size` | | SIZE | Maximum file size in bytes for this backup; overrides `backup.max_file_size` | 0 (unlimited) |
+| `--sealed-only` | | flag | Back up only configured sealed archives; conflicts with positional paths; partial backup without retention | false |
 
 ### Examples
 
@@ -88,6 +91,63 @@ heelonbackup backup --workers 8
 # Backup with maximum file size of 1GB
 heelonbackup backup --max-file-size 1073741824
 ```
+
+---
+
+## seal
+
+Prepare authenticated encrypted archives of `sealed.items` locally. No NAS
+connection or SMB password is needed. Requires the optional `sealed` configuration.
+
+```bash
+heelonbackup seal [OPTIONS]
+heelonbackup seal --dry-run
+```
+
+| Option | Short | Description |
+|--------|-------|-------------|
+| `--dry-run` | `-n` | Validate and display the plan without reading the keyring or writing archives |
+| `--set-passphrase` | | Store/replace the recovery passphrase in the keyring using two masked prompts; conflicts with `--dry-run` |
+
+`--set-passphrase` requires an interactive terminal. Preserve an offline copy of
+the original passphrase before replacement: old archives are not re-encrypted.
+Keyring failures/timeouts are reported without revealing subprocess output.
+`HEELONBACKUP_SEAL_PASSPHRASE` remains an override even after updating the keyring.
+Source configuration is available via `config edit` in the CLI or guided console dialogs.
+
+```bash
+heelonbackup backup --sealed-only --dry-run
+heelonbackup backup --sealed-only
+```
+
+Normal `backup` also seals automatically, for both CLI and console. A dry-run
+shows planned archives separately from scan counts. Full backups include all
+configured archives automatically; partial backups include them only for paths
+overlapping sensitive sources or staging. Sensitive subtrees are never scanned as
+plaintext, even when selected explicitly or via a parent source. Errors abort
+before NAS access; concurrent sealing/backup operations sharing staging are refused.
+See [configuration](configuration.md#sealed-sources) and the
+[recovery procedure](user_guide.md#sealing-sensitive-sources).
+
+---
+
+## history
+
+Clear only local backup summaries in the current environment. This command
+does not load configuration, contact the NAS, remove backups or delete source files.
+
+```bash
+heelonbackup history clear             # preview only
+heelonbackup history clear --dry-run   # preview only
+heelonbackup history clear --yes       # explicit execution
+```
+
+Only regular files named `YYYYMMDD_HHMMSS.json` are eligible. Symlinks, other
+filenames, temporary files and directories are preserved; a changed file inventory
+is refused and must be previewed again. The history directory itself must not be
+a symlink. Errors are reported; a filesystem error during deletion can leave a
+partial cleanup. Development history is `.heelonbackup/history`; production history
+is `~/.local/share/heelonbackup/history` (subject to XDG data-directory settings).
 
 ---
 
@@ -456,4 +516,4 @@ For configuration file options, see [Configuration Reference](configuration.md).
 
 ## Interactive Mode (no subcommand)
 
-Running `heelonbackup` with **no subcommand** opens the interactive console instead of printing this help: a full-screen dashboard (bilingual EN/FR) with the version, environment, live date/time, NAS state (same check as `ping`), last backup, and a terminal pane that streams the output and progress of the running operation. It offers guided flows for backup, status, backups on the NAS (`list`), verify, restore and configuration, using the same engine as the commands documented above. It needs a terminal (exit code 1 otherwise); quitting returns exit code 0, and `Ctrl-C` during an operation interrupts it without closing the dashboard. All subcommands remain unchanged and fully supported; see the user guides for the « Interactive Mode » section.
+Running `heelonbackup` with **no subcommand** opens the interactive console instead of printing this help: a full-screen dashboard (bilingual EN/FR) with the version, environment, live date/time, NAS state (same check as `ping`), last backup, and a terminal pane that streams the output and progress of the running operation. It offers guided flows for backup, seal (`e`: local preview then explicit confirmation), status, backups on the NAS (`list`), verify, restore and configuration, using the same engine as the commands documented above. It needs a terminal (exit code 1 otherwise); quitting returns exit code 0, and `Ctrl-C` during an operation interrupts it without closing the dashboard. All subcommands remain unchanged and fully supported; see the user guides for the « Interactive Mode » section.

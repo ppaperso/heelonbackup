@@ -1,6 +1,6 @@
 //! HeelonBackup - reliable backup library for Linux to Synology NAS via SMB
 //!
-//! - file-level backups stored as plain files on the share (restorable without this tool)
+//! - file-level backups stored as plain files, with optional age archives of sensitive sources
 //! - SHA-256 checksum of every file, recorded in a manifest
 //! - progress, ETA, clear final status and restore dry-run
 

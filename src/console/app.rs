@@ -29,18 +29,20 @@ pub(crate) enum Action {
     List,
     Verify,
     Restore,
+    Seal,
     Config,
     Language,
     Quit,
 }
 
 /// Menu entries, in display order
-pub(crate) const MENU: [Action; 8] = [
+pub(crate) const MENU: [Action; 9] = [
     Action::Backup,
     Action::Status,
     Action::List,
     Action::Verify,
     Action::Restore,
+    Action::Seal,
     Action::Config,
     Action::Language,
     Action::Quit,
@@ -54,6 +56,7 @@ impl Action {
             Self::List => s.menu_list,
             Self::Verify => s.menu_verify,
             Self::Restore => s.menu_restore,
+            Self::Seal => s.menu_seal,
             Self::Config => s.menu_config,
             Self::Language => s.menu_language,
             Self::Quit => s.menu_quit,
@@ -68,6 +71,7 @@ impl Action {
             Self::List => 'n',
             Self::Verify => 'v',
             Self::Restore => 'r',
+            Self::Seal => 'e',
             Self::Config => 'c',
             Self::Language => 'L',
             Self::Quit => 'q',

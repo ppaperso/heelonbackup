@@ -50,7 +50,21 @@ pub fn run(path: &Path, action: Option<Action>) -> Result<Exit> {
 fn check(path: &Path) -> Result<Exit> {
     let config = Config::load(path)?; // parse + validate + environment base_dir check
     Excludes::new(&config.backup.excludes)?; // exclude patterns must compile
+    let sealed = config
+        .sealed
+        .as_ref()
+        .map(super::seal::Plan::new)
+        .transpose()?;
     let (found, missing) = resolve_sources(&config);
+    let missing: Vec<_> = missing
+        .into_iter()
+        .filter(|source| {
+            sealed
+                .as_ref()
+                .and_then(|plan| plan.pending_source(&expand_tilde(source)))
+                .is_none()
+        })
+        .collect();
     let target = SmbTarget::parse(&config.smb.url)?;
     print_check_summary(path, &config, &target, &found);
     if missing.is_empty() {
@@ -84,10 +98,29 @@ pub(crate) fn print_sources(config: &Config, list_excludes: bool) -> bool {
         match expand_tilde(source).canonicalize() {
             Ok(p) if p.as_os_str() == source.as_str() => ui::say!("    ✓ {source}"),
             Ok(p) => ui::say!("    ✓ {source}  →  {}", p.display()),
+            Err(_)
+                if config
+                    .sealed
+                    .as_ref()
+                    .is_some_and(|sealed| source == &sealed.staging_dir) =>
+            {
+                ui::say!("    ✓ {source}  (created automatically by seal)");
+            }
             Err(_) => {
                 all_found = false;
                 ui::say!("    ✗ {source}  (not found: it will be skipped)");
             }
+        }
+    }
+    if let Some(sealed) = &config.sealed {
+        ui::say!("Encrypted archives are included automatically in full backups:");
+        for item in &sealed.items {
+            ui::say!(
+                "    {} -> {}/{} (never transferred as plaintext)",
+                item.path,
+                sealed.staging_dir,
+                item.archive
+            );
         }
     }
     if sources.is_empty() {

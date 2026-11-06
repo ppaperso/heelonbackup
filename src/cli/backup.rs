@@ -11,6 +11,10 @@ pub struct BackupArgs {
     /// Files or folders to back up instead of the configured sources
     pub paths: Vec<PathBuf>,
 
+    /// Back up only the configured sealed archives, not ordinary sources
+    #[arg(long, conflicts_with = "paths")]
+    pub sealed_only: bool,
+
     /// Scan and check the connection, but transfer nothing
     #[arg(short = 'n', long)]
     pub dry_run: bool,
@@ -47,5 +51,10 @@ impl From<BackupArgs> for service::backup::BackupRequest {
 
 /// The CLI only parses the arguments; the orchestration lives in `service::backup`
 pub async fn run(config: &Config, args: BackupArgs) -> Result<Exit> {
-    service::backup::run(config, args.into()).await
+    let sealed_only = args.sealed_only;
+    let mut request: service::backup::BackupRequest = args.into();
+    if sealed_only {
+        request.paths = service::seal::backup_request(config, request.dry_run)?.paths;
+    }
+    service::backup::run(config, request).await
 }
