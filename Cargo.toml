@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 authors = ["heelon"]
 description = "Reliable backup tool for Linux to Synology NAS (BeeStation) via SMB"
-rust-version = "1.87"
+rust-version = "1.99"
 license = "Apache-2.0"
 readme = "README.md"
 repository = "https://github.com/heelon/heelonbackup"
@@ -33,12 +33,12 @@ serde_json = "1.0"
 chrono = { version = "0.4", features = ["serde"] }
 
 # Paths
-dirs = "6.0"
+dirs = "7.0"
 globset = "0.4"
 tempfile = "3.10"
 
 # Hashing
-sha2 = "0.10"
+sha2 = "0.11"
 hex = "0.4"
 
 # Logging
@@ -56,6 +56,7 @@ rpassword = "7.3"
 
 # statvfs / access / hostname
 nix = { version = "0.31", features = ["fs", "hostname"] }
+dialoguer = { version = "0.12.0", default-features = false }
 
 [profile.release]
 opt-level = 3

@@ -12,9 +12,9 @@ build:
 build-release:
     cargo build --release
 
-# Run the application
+# Run the application (without arguments: opens the interactive console)
 run *args:
-    cargo run -- @args
+    cargo run -- {{args}}
 
 # Configuration commands
 config-init:
@@ -182,7 +182,7 @@ setup-patrick:
     @echo "Now edit .heelonbackup/config.json (dev configuration) to set:"
     @echo "  - smb.url: your NAS SMB share URL"
     @echo "  - smb.username: your NAS username"
-    @echo "  - Set HEELONBACKUP_SMB_PASSWORD environment variable"
+    @echo "  - In a terminal the SMB password is asked masked at launch (HEELONBACKUP_SMB_PASSWORD is only for non-interactive runs)"
     @echo ""
 
 # Test backup of /home/Patrick/Documents (DRY RUN - safe mode)
@@ -236,7 +236,7 @@ backup-commands:
     @echo "    smb.timeout: 60"
     @echo "    storage.base_dir: \"dev_heelonbackup\" (must start with dev_ in dev)"
     @echo ""
-    @echo "Step 4: Set password as environment variable"
+    @echo "Step 4: Password — in a terminal it is asked masked at launch; for scripts/cron set HEELONBACKUP_SMB_PASSWORD (non-interactive only)"
     @echo "  export HEELONBACKUP_SMB_PASSWORD=\"your_password\""
     @echo ""
     @echo "Step 5: Test with dry-run (RECOMMENDED FIRST)"

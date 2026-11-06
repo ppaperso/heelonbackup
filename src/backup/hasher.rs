@@ -2,7 +2,7 @@
 
 use sha2::{Digest, Sha256};
 use std::fs::File;
-use std::io::{self, BufReader};
+use std::io::{self, BufReader, Read};
 use std::path::Path;
 
 const BUFFER_SIZE: usize = 256 * 1024;
@@ -11,7 +11,16 @@ const BUFFER_SIZE: usize = 256 * 1024;
 pub fn hash_file(path: &Path) -> io::Result<(String, u64)> {
     let mut reader = BufReader::with_capacity(BUFFER_SIZE, File::open(path)?);
     let mut hasher = Sha256::new();
-    let size = io::copy(&mut reader, &mut hasher)?;
+    let mut buffer = vec![0u8; BUFFER_SIZE];
+    let mut size = 0u64;
+    loop {
+        let read = reader.read(&mut buffer)?;
+        if read == 0 {
+            break;
+        }
+        hasher.update(&buffer[..read]);
+        size += read as u64;
+    }
     Ok((hex::encode(hasher.finalize()), size))
 }
 

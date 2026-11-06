@@ -1,6 +1,7 @@
 //! Terminal output helpers: progress bars, human-readable sizes and durations
 
 use crate::config::Environment;
+use chrono::{DateTime, Local};
 use indicatif::{HumanBytes, MultiProgress, ProgressBar, ProgressStyle};
 use std::io::{self, IsTerminal, Write};
 use std::sync::LazyLock;
@@ -87,6 +88,32 @@ pub fn transfer_bar(total_bytes: u64, prefix: &str) -> ProgressBar {
 }
 
 pub const RULE: &str = "────────────────────────────────────────────────────────────";
+
+/// `3 days ago`, `5 min ago`
+pub fn age(date: DateTime<Local>) -> String {
+    let secs = (Local::now() - date).num_seconds().max(0);
+    match secs {
+        0..60 => "just now".to_string(),
+        60..3600 => format!("{} min ago", secs / 60),
+        3600..86400 => format!("{} h ago", secs / 3600),
+        _ => format!("{} days ago", secs / 86400),
+    }
+}
+
+/// `2026-01-07 14:32:05`
+pub fn date(d: DateTime<Local>) -> String {
+    d.format("%Y-%m-%d %H:%M:%S").to_string()
+}
+
+/// Print at most `max` items, then `... and N more`
+pub fn print_limited<T>(items: &[T], max: usize, show: impl Fn(&T) -> String) {
+    for item in items.iter().take(max) {
+        println!("    • {}", show(item));
+    }
+    if items.len() > max {
+        println!("    … and {} more", items.len() - max);
+    }
+}
 
 /// Warn on stderr when running in the development environment (silent in production)
 pub fn print_environment_banner() {

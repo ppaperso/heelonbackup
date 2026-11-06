@@ -12,6 +12,7 @@ This document provides a complete reference for all HeelonBackup command-line op
 6. [restore](#restore)
 7. [config](#config)
 8. [completions](#completions)
+9. [Interactive Mode (no subcommand)](#interactive-mode-no-subcommand)
 
 ## Global Options
 
@@ -46,23 +47,24 @@ Backup the configured sources, or the given files/folders, to the NAS.
 ### Usage
 
 ```bash
-heelonbackup backup [OPTIONS] [SOURCES]...
+heelonbackup backup [OPTIONS] [PATHS]...
 ```
 
 ### Arguments
 
 | Argument | Type | Description |
 |----------|------|-------------|
-| `SOURCES` | PATH | Directories or files to back up. If not provided, uses configured sources. |
+| `PATHS` | PATH | Files or folders to back up instead of the configured sources (repeatable). If omitted, uses `backup.sources` from the configuration. |
 
 ### Options
 
 | Option | Short | Type | Description | Default |
 |--------|-------|------|-------------|---------|
-| `--exclude` | `-e` | PATTERN | Exclude pattern (glob syntax). Can be specified multiple times. | N/A |
-| `--dry-run` | `-n` | flag | Show what would be backed up without actually transferring. | false |
-| `--workers` | `-w` | NUMBER | Number of parallel workers. Overrides config. | CPU count |
-| `--max-file-size` | | SIZE | Maximum file size in bytes. Overrides config. | 0 (unlimited) |
+| `--dry-run` | `-n` | flag | Scan and check the connection, but transfer nothing | false |
+| `--list` | `-l` | flag | With `--dry-run`: print every file that would be backed up | false |
+| `--exclude` | `-e` | PATTERN | Extra exclude pattern (glob), **appended** to `backup.excludes` (repeatable) | N/A |
+| `--workers` | `-w` | NUMBER | Parallel SMB sessions for this backup; overrides `backup.workers` (1-16) | CPU count (clamped 1-4) |
+| `--max-file-size` | | SIZE | Maximum file size in bytes for this backup; overrides `backup.max_file_size` | 0 (unlimited) |
 
 ### Examples
 
@@ -240,60 +242,60 @@ heelonbackup verify 20261007_143022 --deep
 
 ## restore
 
-Restore files from a backup (use `--dry-run` to only check what would happen).
+Restore files from a backup stored on the NAS.
 
 ### Usage
 
 ```bash
-heelonbackup restore [OPTIONS] BACKUP DESTINATION
+heelonbackup restore [OPTIONS] [BACKUP]
 ```
 
 ### Arguments
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `BACKUP` | STRING | Yes | Backup name (YYYYMMDD_HHMMSS) |
-| `DESTINATION` | PATH | Yes | Local directory to restore files to |
+| `BACKUP` | STRING | No | Backup name (YYYYMMDD_HHMMSS). Default: the latest usable backup |
 
 ### Options
 
 | Option | Short | Type | Description | Default |
 |--------|-------|------|-------------|---------|
-| `--execute` | `-e` | flag | Actually restore files (without this, it's a dry run) | false |
-| `--files` | `-f` | PATH | Specific files to restore (absolute paths). Can be specified multiple times. | N/A |
-| `--pattern` | `-p` | PATTERN | Restore files matching this pattern (glob syntax) | N/A |
-| `--dry-run` | `-n` | flag | Show what would be restored without actually doing it | false |
+| `--target` | `-t` | DIR | Restore under this folder instead of the original locations | original locations |
+| `--path` | `-p` | PATH | Only restore this file/folder (original absolute path; repeatable) | everything in the backup |
+| `--dry-run` | `-n` | flag | Check everything (NAS content, conflicts, free space, permissions) and print the plan without writing anything | false |
+| `--overwrite` | | flag | Replace existing files that differ from the backup (otherwise they are kept as conflicts) | false |
+| `--list` | `-l` | flag | Print the action planned for every file | false |
+
+### Semantics
+
+- There is **no `--execute` flag**: without `--dry-run` the restore is **executed** (files are written). `--dry-run` only prints the plan and a verdict (exit 0 = would succeed, 2 = partial, 1 = would fail) and writes nothing.
+- Without `--target`, files are restored to their **original absolute locations** — use `--target` for tests.
+- The interactive console (`heelonbackup` without subcommand) always runs a dry run first and requires an explicit confirmation before any write.
 
 ### Examples
 
 ```bash
-# Dry run to see what would be restored
-heelonbackup restore 20261007_143022 /home/user/restored
+# Dry run: plan of restoring backup 20261007_143022 under /home/user/restored
+heelonbackup restore 20261007_143022 --target /home/user/restored --dry-run
 
-# Actually restore files
-heelonbackup restore 20261007_143022 /home/user/restored --execute
+# Real restore under a target folder
+heelonbackup restore 20261007_143022 --target /home/user/restored
 
-# Restore specific files
-heelonbackup restore 20261007_143022 /home/user/restored \
-  --files "/home/user/Documents/important.pdf" \
-  --files "/home/user/Pictures/vacation.jpg"
+# Only some original paths (repeatable), overwriting differing files, listing every action
+heelonbackup restore 20261007_143022 --target /home/user/restored \
+  --path /home/user/Documents --path /home/user/Pictures \
+  --overwrite --list
 
-# Restore files matching a pattern
-heelonbackup restore 20261007_143022 /home/user/restored \
-  --pattern "*.pdf"
-
-# Restore with dry run
-heelonbackup restore 20261007_143022 /home/user/restored \
-  --dry-run
+# Dry run of the latest usable backup, restored to the original locations
+heelonbackup restore --dry-run
 ```
 
 ### Restore Behavior
 
-- By default, restore is a dry run (no files are actually restored)
-- Use `--execute` to actually restore files
-- Files are restored to their original paths relative to the destination
-- Original file permissions are preserved when possible
-- Existing files are not overwritten by default (this may change in future versions)
+- SHA-256 checksums of downloaded files are verified before they are moved into place
+- Original permissions and modification times are restored (setuid/setgid bits are never restored)
+- Each file is restored atomically (temporary `.part` file, then rename)
+- Existing differing files are kept unless `--overwrite` is given
 
 ---
 
@@ -311,9 +313,10 @@ heelonbackup config [OPTIONS] [ACTION]
 
 | Action | Description |
 |--------|-------------|
-| `init` | Create default configuration if it doesn't exist |
+| `init` | Create default configuration if it doesn't exist (`--force` to replace an existing one) |
 | `edit` | Edit the configuration file with default editor |
-| `check` | Validate the configuration file |
+| `path` | Print the path of the configuration file |
+| `check` | Validate the configuration file and resolve the configured sources (they must exist on disk); prints a summary and a final verdict. Exit 0 (`✅`) when valid, 1 with the error otherwise. No network access — use `list` to test the NAS connection |
 | `show` | Show the current configuration |
 
 ### Options
@@ -420,3 +423,7 @@ HeelonBackup uses the following exit codes:
 ## Configuration File
 
 For configuration file options, see [Configuration Reference](configuration.md).
+
+## Interactive Mode (no subcommand)
+
+Running `heelonbackup` with **no subcommand** opens the interactive console (menu-driven dialogues, bilingual EN/FR) instead of printing this help. It offers guided flows for backup, status, verify, restore and configuration, using the same engine as the commands documented above. All subcommands remain unchanged and fully supported; see the user guides for the « Interactive Mode » section.

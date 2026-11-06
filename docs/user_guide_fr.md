@@ -8,9 +8,10 @@
 2. [Installation](#-installation)
 3. [Configuration](#-configuration)
 4. [Utilisation de Base](#-utilisation-de-base)
-5. [Fonctionnalités Avancées](#-fonctionnalités-avancées)
-6. [Dépannage](#-dépannage)
-7. [Considérations de Sécurité](#-considérations-de-sécurité)
+5. [Mode Interactif](#️-mode-interactif)
+6. [Fonctionnalités Avancées](#-fonctionnalités-avancées)
+7. [Dépannage](#-dépannage)
+8. [Considérations de Sécurité](#-considérations-de-sécurité)
 
 ## 📖 Introduction
 
@@ -184,20 +185,30 @@ Voici une explication détaillée de toutes les options de configuration :
 }
 ```
 
+#### Options Générales
+
+| Option | Type | Requis | Défaut | Description |
+|--------|------|--------|--------|-------------|
+| `log_level` | string | Non | "warn" | Niveau de logs de diagnostic (error, warn, info, debug, trace) |
+| `language` | string | Non | "en" | Langue de la console interactive : « en » ou « fr » (modifiable via l'entrée « Langue / Language » du menu) |
+
 ### Variables d'Environnement
 
 HeelonBackup prend en charge les variables d'environnement suivantes :
 
 #### `HEELONBACKUP_SMB_PASSWORD`
 
-Le mot de passe SMB peut être fourni via cette variable d'environnement au lieu de le stocker dans le fichier de configuration :
+Dans un **terminal interactif**, le mot de passe SMB est demandé via une **saisie masquée** au lancement de la connexion NAS — il n'est jamais lu depuis l'environnement, jamais stocké dans l'historique du shell, et jamais affiché :
 
 ```bash
-# Définir le mot de passe pour la session en cours
-export HEELONBACKUP_SMB_PASSWORD="votre_mot_de_passe_secure"
+heelonbackup backup   # demande « SMB password for user@nas : » (saisie masquée)
+```
 
-# Exécuter la sauvegarde avec le mot de passe depuis l'environnement
-heelonbackup backup
+**Runs non interactifs uniquement** (scripts, cron, `sudo` sans tty) : fournir le mot de passe via la variable d'environnement :
+
+```bash
+# Run non interactif (script/cron) avec le mot de passe depuis l'environnement
+HEELONBACKUP_SMB_PASSWORD="votre_mot_de_passe_secure" heelonbackup backup
 ```
 
 Ceci est la méthode **recommandée** pour fournir le mot de passe, car elle est plus sécurisée que de le stocker dans un fichier de configuration.
@@ -347,20 +358,45 @@ heelonbackup verify --deep
 Pour restaurer des fichiers depuis une sauvegarde :
 
 ```bash
-# Simulation (montre ce qui serait restauré sans le faire réellement)
-heelonbackup restore 20261007_143022 /home/user/restaure
+# Simulation : plan affiché, rien n'est écrit
+heelonbackup restore 20261007_143022 --target /home/user/restaure --dry-run
 
-# Restauration réelle
-heelonbackup restore 20261007_143022 /home/user/restaure --execute
+# Restauration réelle sous un dossier cible (sans --dry-run, les fichiers sont écrits)
+heelonbackup restore 20261007_143022 --target /home/user/restaure
 
-# Restaurer uniquement des fichiers spécifiques
-heelonbackup restore 20261007_143022 /home/user/restaure --files "/home/user/Documents/important.pdf"
+# Restaurer uniquement certains chemins d'origine (répétable)
+heelonbackup restore 20261007_143022 --target /home/user/restaure \
+  --path /home/user/Documents --path /home/user/Pictures
 
-# Restaurer les fichiers correspondant à un motif
-heelonbackup restore 20261007_143022 /home/user/restaure --pattern "*.pdf"
+# Écraser les fichiers existants différents, et lister l'action prévue par fichier
+heelonbackup restore 20261007_143022 --target /home/user/restaure --overwrite --list
 ```
 
-Remplacez `20261007_143022` par le nom de votre sauvegarde (horodatage).
+Remplacez `20261007_143022` par le nom de votre sauvegarde (horodatage). Sans `--target`, les fichiers sont restaurés à leurs emplacements absolus d'origine. Dans la console interactive (`heelonbackup` sans sous-commande), un dry-run est toujours affiché d'abord et une confirmation explicite est requise avant toute écriture.
+
+## 🖥️ Mode Interactif
+
+Exécuter `heelonbackup` **sans sous-commande** ouvre une console interactive (dialogues par menus, pas d'interface plein écran) :
+
+```text
+? HeelonBackup — que souhaitez-vous faire ? ›
+❯ Lancer un backup
+  Statut
+  Vérifier un backup
+  Restaurer
+  Configuration
+  Langue / Language
+  Quitter
+```
+
+- **Lancer un backup** : sources configurées ou chemins précis ; un **dry-run est toujours proposé d'abord**, et un vrai transfert ne démarre qu'après une confirmation explicite.
+- **Statut** : résumé du dernier backup, vue détaillée ou historique complet (même affichage que `heelonbackup status`).
+- **Vérifier un backup** : choix d'un backup sur le NAS (ou du dernier utilisable), avec vérification approfondie SHA-256 optionnelle.
+- **Restaurer** : choix d'un backup, d'un dossier cible (vide = emplacements d'origine) et de filtres de chemins optionnels ; un dry-run est toujours exécuté d'abord.
+- **Configuration** : afficher le fichier de configuration, afficher son chemin ou l'ouvrir dans `$EDITOR`.
+- **Langue / Language** : bascule la console entre anglais et français pour la session ; le choix est enregistré dans le fichier de configuration (`"language" : "en"` ou `"fr"`, défaut `"en"`).
+
+Chaque flux utilise le même moteur que les commandes CLI : affichages, barres de progression et codes de sortie sont identiques. Le mot de passe SMB est demandé via une saisie masquée et n'est jamais stocké ni affiché ; `HEELONBACKUP_SMB_PASSWORD` n'est utilisée que pour les runs non interactifs. `Échap` / `q` / `Ctrl-C` quittent proprement le dialogue courant ; `Ctrl-C` pendant un transfert l'interrompt (code de sortie 130, comme en CLI). Toute sous-commande conserve le comportement CLI classique.
 
 ## 🚀 Fonctionnalités Avancées
 
@@ -490,7 +526,7 @@ error: SMB authentication failed: session setup failed
 **Solution :**
 - Vérifiez votre nom d'utilisateur et mot de passe
 - Vérifiez si l'utilisateur a accès au partage
-- Essayez en utilisant la variable d'environnement :
+- Dans un terminal, le mot de passe est demandé masqué au lancement ; pour les scripts/cron, utilisez la variable d'environnement :
 
 ```bash
 export HEELONBACKUP_SMB_PASSWORD="votre_mot_de_passe"
@@ -586,7 +622,7 @@ smbclient //nas-ip/share -U votre_utilisateur -c "ls"
 
 ### Sécurité du Mot de Passe
 
-**Meilleure Pratique** : Utilisez toujours la variable d'environnement pour votre mot de passe SMB au lieu de le stocker dans le fichier de configuration :
+**Meilleure Pratique** : dans un terminal, le mot de passe SMB est demandé via une saisie masquée — il n'est jamais stocké sur disque ni dans l'historique du shell. Pour les runs non interactifs (scripts, cron), utilisez la variable d'environnement, jamais un mot de passe en dur :
 
 ```bash
 export HEELONBACKUP_SMB_PASSWORD="votre_mot_de_passe"

@@ -8,10 +8,10 @@ mod status;
 mod verify;
 
 use crate::config::Config;
-use crate::error::BackupError;
+use crate::error::{BackupError, Result};
+use crate::service::Exit;
 use crate::ui;
 use clap::{CommandFactory, Parser, Subcommand};
-use common::Exit;
 use std::path::PathBuf;
 use std::process::ExitCode;
 use tracing_subscriber::EnvFilter;
@@ -27,8 +27,9 @@ pub struct Cli {
     #[arg(short, long, global = true, value_name = "PATH")]
     pub config: Option<PathBuf>,
 
+    /// Without a subcommand, the interactive console opens
     #[command(subcommand)]
-    pub command: Commands,
+    pub command: Option<Commands>,
 }
 
 #[derive(Subcommand, Debug)]
@@ -96,7 +97,14 @@ pub async fn run() -> ExitCode {
     let verbose = cli.verbose;
     ui::print_environment_banner();
 
-    let result = match cli.command {
+    // No subcommand: open the interactive console (same dev banner, same logging setup)
+    let Some(command) = cli.command else {
+        let log_level = Config::load(&config_path).ok().map(|c| c.log_level);
+        init_logging(verbose, log_level.as_deref());
+        return exit_code(crate::console::run(&config_path).await);
+    };
+
+    let result = match command {
         Commands::Backup(args) => match common::load_config(&config_path, verbose) {
             Ok(config) => backup::run(&config, args).await,
             Err(e) => Err(e),
@@ -132,6 +140,11 @@ pub async fn run() -> ExitCode {
         }
     };
 
+    exit_code(result)
+}
+
+/// Map a command or console result to the process exit code
+fn exit_code(result: Result<Exit>) -> ExitCode {
     match result {
         Ok(exit) => exit.into(),
         Err(BackupError::Interrupted) => {

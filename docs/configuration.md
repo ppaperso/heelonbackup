@@ -48,7 +48,7 @@ The `smb` section configures the connection to your SMB server (Synology NAS).
 |--------|------|----------|---------|-------------|
 | `url` | string | **Yes** | - | SMB share URL in the format `smb://host[:port]/share[/folder]` |
 | `username` | string | **Yes** | - | Username for SMB authentication |
-| `password` | string | No | null | Password for SMB authentication (optional, prefer environment variable) |
+| `password` | string | No | null | Password for SMB authentication (optional, non-interactive runs only; interactively a masked prompt is used) |
 | `workgroup` | string | No | null | Workgroup or domain name |
 | `timeout` | integer | No | 30 | Connection timeout in seconds (0 = no timeout) |
 | `encrypt` | boolean | No | true | Require SMB3 encryption for the connection |
@@ -80,16 +80,14 @@ smb://server:port/share
 
 ### Authentication
 
-**Recommended:** Use the `HEELONBACKUP_SMB_PASSWORD` environment variable instead of storing passwords in the configuration file.
+**Recommended (interactive):** in a terminal, the password is asked with a masked prompt when the NAS connection starts — nothing is stored in the shell history, the environment or on disk.
+
+**Non-interactive runs only** (scripts, cron, `sudo` without a tty): use the `HEELONBACKUP_SMB_PASSWORD` environment variable (set and not empty):
 
 ```bash
-# Set password temporarily
+# Set password for a non-interactive run
 export HEELONBACKUP_SMB_PASSWORD="your_password"
-
-# Or set permanently in your shell profile
-# Add to ~/.bashrc or ~/.zshrc:
-echo 'export HEELONBACKUP_SMB_PASSWORD="your_password"' >> ~/.bashrc
-source ~/.bashrc
+heelonbackup backup
 ```
 
 **Alternative:** Store password in configuration file:
@@ -381,7 +379,7 @@ HeelonBackup supports the following environment variables:
 
 ### `HEELONBACKUP_SMB_PASSWORD`
 
-Provides the SMB password without storing it in the configuration file.
+Provides the SMB password for **non-interactive runs** (scripts, cron) without storing it in the configuration file. In an interactive terminal the password is asked with a masked prompt instead, and this variable is ignored.
 
 ```bash
 # Set for current session

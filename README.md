@@ -26,7 +26,7 @@
 
 ### System
 - Linux Fedora 44+ (or any recent distribution with glibc 2.34+)
-- Rust 2024 edition (latest stable version recommended)
+- Rust 1.99+ (MSRV, edition 2024; latest stable recommended)
 - `smbclient` installed: `sudo dnf install samba-client`
 - `cifs-utils` for CIFS mounts (optional)
 
@@ -136,7 +136,7 @@ Close Firefox before backing up its profile to avoid inconsistent databases.
 ### Environment Variables
 
 ```bash
-# SMB password (preferred over configuration file)
+# SMB password for NON-interactive runs only (scripts, cron); in a terminal it is asked masked at launch
 export HEELONBACKUP_SMB_PASSWORD="your_password"
 
 # Log level (debug, info, warn, error)
@@ -147,6 +147,23 @@ export HEELONBACKUP_ENV=dev
 ```
 
 ## 🎯 Commands
+
+### 🖥️ Interactive Mode
+
+Run `heelonbackup` **without a subcommand** to open the interactive console (bilingual EN/FR, menu-driven):
+
+```text
+? HeelonBackup — what would you like to do? ›
+❯ Start a backup
+  Status
+  Verify a backup
+  Restore
+  Configuration
+  Langue / Language
+  Quit
+```
+
+Guided flows: backup (a dry run is always proposed before any real transfer), status, verify, restore (dry run first) and configuration. Every subcommand below keeps the classic CLI behavior. Details in the [user guide](docs/user_guide.md) and [guide utilisateur](docs/user_guide_fr.md).
 
 ### 💾 Backup
 
@@ -219,17 +236,17 @@ heelonbackup verify --deep
 ### 🔄 Restore
 
 ```bash
-# Restore files (dry run by default)
-heelonbackup restore 20261007_143022 /home/user/restored
+# Dry run: plan only, nothing is written
+heelonbackup restore 20261007_143022 --target /home/user/restored --dry-run
 
-# Restore with actual execution
-heelonbackup restore 20261007_143022 /home/user/restored --execute
+# Actual restore under a target folder (without --dry-run, files are written)
+heelonbackup restore 20261007_143022 --target /home/user/restored
 
-# Restore specific files
-heelonbackup restore 20261007_143022 /home/user/restored --files "/home/user/Documents/important.txt"
+# Restore only specific original paths (repeatable)
+heelonbackup restore 20261007_143022 --target /home/user/restored --path /home/user/Documents
 
-# Restore with filters
-heelonbackup restore 20261007_143022 /home/user/restored --pattern "*.pdf"
+# Overwrite differing files / list every planned action
+heelonbackup restore 20261007_143022 --target /home/user/restored --overwrite --list
 ```
 
 ### ⚙️ Configuration
@@ -265,7 +282,7 @@ heelonbackup completions fish > ~/.config/fish/completions/heelonbackup.fish
 
 - **Encryption**: Support for SMB3 traffic encryption
 - **Password Security**: No password storage in logs or command line
-- **Environment Variables**: Password can be passed via `HEELONBACKUP_SMB_PASSWORD`
+- **Masked password prompt**: in a terminal the SMB password is typed hidden at launch (never stored); `HEELONBACKUP_SMB_PASSWORD` is only for non-interactive runs, and the password is never passed on a command line
 - **Verification**: SHA-256 checksums for every backed up file
 - **Permissions**: Preserves original Unix permissions
 
@@ -344,7 +361,7 @@ error: SMB authentication failed: session setup failed
 ```
 **Solution**:
 - Verify username and password
-- Try with environment variable: `export HEELONBACKUP_SMB_PASSWORD="your_password"`
+- In a terminal the password is asked masked at launch; for scripts/cron use the env var: `export HEELONBACKUP_SMB_PASSWORD="your_password"`
 
 ### Missing configuration
 ```

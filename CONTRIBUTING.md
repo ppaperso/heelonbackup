@@ -4,6 +4,11 @@ First off, thank you for considering contributing to HeelonBackup! 🎉 It's peo
 
 This document provides guidelines for contributing to HeelonBackup. Following these guidelines helps us maintain a high standard of quality for the project and makes it easier for us to review and merge your contributions.
 
+## 🌐 Languages
+
+- **Code, commits, issues and pull requests are in English only.** This includes commit messages, PR titles and descriptions, code comments (`//`, `///`, `//!`) and issue reports.
+- **User-facing documentation is maintained in both English and French** (`docs/user_guide.md` and `docs/user_guide_fr.md`). Any PR that changes user-visible behavior must update both guides in sync.
+
 ## 🤝 Ways to Contribute
 
 There are many ways you can contribute to HeelonBackup:
@@ -25,7 +30,7 @@ If you find a bug, please report it! Bug reports help us improve the software fo
 3. Describe your environment (OS, Rust version, NAS model, etc.)
 4. Provide clear steps to reproduce the issue
 5. Include relevant configuration details (remove sensitive information)
-6. Add any error messages or log output
+6. Include any error messages or log output
 7. Explain the expected vs. actual behavior
 
 ### 💡 Suggesting Enhancements
@@ -66,6 +71,7 @@ We welcome pull requests! Here's how to contribute code:
    cargo build
    cargo test
    ```
+   The justfile provides ready-made recipes that run in a safe development environment (configuration and history under `./.heelonbackup/`, backups in `dev_*` folders on the NAS — production is never touched). Use `just dev` (build + test + clippy + fmt check) before every commit.
 
 #### Development Guidelines
 
@@ -75,7 +81,7 @@ We welcome pull requests! Here's how to contribute code:
    - Run `cargo clippy` to catch linting issues
 
 2. **Commits**:
-   - Use clear, descriptive commit messages
+   - Use clear, descriptive commit messages, **in English**
    - Follow the [Conventional Commits](https://www.conventionalcommits.org/) convention
    - Keep commits atomic (one logical change per commit)
    - Reference issue numbers when applicable
@@ -84,19 +90,33 @@ We welcome pull requests! Here's how to contribute code:
    - Add tests for new functionality
    - Ensure existing tests still pass
    - Include edge cases in your tests
+   - Keep business logic testable without a terminal
 
 4. **Documentation**:
    - Update documentation for any changes
    - Add doc comments for new public APIs
    - Keep README and other docs up-to-date
+   - Update both the English and French user guides when user-visible behavior changes
+
+#### Dependency Updates
+
+This project is expected to **stay up to date**:
+
+- Check for dependency updates (`cargo outdated`, or the crate pages on crates.io) and apply them, **unless they break the code in a way that cannot be fixed reasonably in the same PR** — in that case, open an issue describing the breaking changes instead.
+- **Patch/minor updates**: apply without discussion.
+- **Major updates** (e.g. `dirs 6 → 7`, `sha2 0.10 → 0.11`): read the crate's changelog, adapt the code to the breaking changes, and run the targeted tests of the affected modules (`just test-hasher`, etc.) in addition to the full test suite.
+- Run `cargo audit` and address any known vulnerabilities **as a priority**.
+- `Cargo.lock` is committed and must be updated together with `Cargo.toml`; the MSRV declared in `Cargo.toml` (Rust 1.99) must still hold after updates.
+- Put dependency updates in a dedicated commit (e.g. `chore(deps): bump dirs to 7 and sha2 to 0.11`), never mixed with functional changes.
 
 #### Pull Request Guidelines
 
-1. **Title**: Use a clear, descriptive title prefixed with `feat:`, `fix:`, `docs:`, `refactor:`, etc.
+1. **Title**: Use a clear, descriptive title prefixed with `feat:`, `fix:`, `docs:`, `refactor:`, etc., **in English**
 2. **Description**: Include a clear description of what the PR does
 3. **Linked Issues**: Reference any related issues
 4. **Tests**: Ensure all tests pass
 5. **Checks**: Ensure CI passes (format, lint, build, test)
+6. **Dependencies**: If the PR includes a major dependency update, confirm that the crate's changelog was consulted, breaking changes are handled in the code, `Cargo.lock` is updated, and the MSRV still holds
 
 **Example PR title:**
 ```
@@ -111,7 +131,7 @@ Improving documentation is always welcome! This includes:
 - Fixing typos or unclear explanations
 - Adding examples
 - Improving existing documentation
-- Translating documentation to other languages
+- Keeping the English and French user guides in sync
 - Writing tutorials or guides
 
 ### 🌍 Community Contributions
@@ -128,7 +148,7 @@ You can also contribute by:
 
 ### Prerequisites
 
-- Rust 2024 edition (latest stable recommended)
+- Rust 2024 edition (latest stable recommended, MSRV 1.99)
 - `smbclient` installed (`sudo dnf install samba-client` or equivalent)
 - Git
 - Cargo (comes with Rust)
@@ -167,8 +187,8 @@ cargo fmt --check
 # Run clippy for linting
 cargo clippy
 
-# Run all checks
-cargo check
+# Or, with the justfile: build + test + clippy + fmt check in one command
+just dev
 ```
 
 ### Running Locally
@@ -180,6 +200,12 @@ cargo run -- backup
 # Or build in release mode
 cargo build --release
 ./target/release/heelonbackup --help
+
+# Safe validation recipes (development environment)
+just backup-dryrun <source>    # scan without connecting to the NAS
+just status-detailed           # last backup result, including failed files
+just verify <backup>           # presence and size check
+just verify-deep <backup>      # full SHA-256 verification
 ```
 
 ## 🏗️ Project Structure
@@ -195,20 +221,19 @@ src/
 │   ├── mod.rs           # Exports: scan, hash_file, Excludes, ScanReport
 │   ├── scanner.rs       # File scanning with exclusion handling
 │   └── hasher.rs        # SHA-256 checksums
+├── cli/                 # CLI commands (parsing + delegation)
+│   ├── mod.rs           # Main CLI with routing
+│   ├── common.rs        # Common code
+│   ├── backup.rs        # Backup command
+│   ├── status.rs        # Status command
+│   ├── verify.rs        # Verify command
+│   ├── restore.rs       # Restore command
+│   └── config_cmd.rs    # Configuration management
 └── storage/             # Remote side (SMB, manifests, transfers)
     ├── mod.rs           # Exports: SmbClient, BackupManifest, Transfer
     ├── smb_client.rs    # smbclient wrapper
     ├── backup_manifest.rs # Backup manifest and history
     └── transfer.rs      # Parallel transfer logic
-└── cli/                 # CLI commands
-    ├── mod.rs           # Main CLI with routing
-    ├── common.rs        # Common code
-    ├── backup.rs        # Backup command
-    ├── status.rs        # Status command
-    ├── list.rs          # List command
-    ├── verify.rs        # Verify command
-    ├── restore.rs       # Restore command
-    └── config_cmd.rs    # Configuration management
 ```
 
 ## 📝 Coding Standards
@@ -239,6 +264,7 @@ src/
   - `warn!` for potentially harmful situations
   - `error!` for errors that should be investigated
 - Include meaningful context in log messages
+- **Never log or print SMB passwords or secrets** in any form
 
 ### Testing
 
@@ -261,14 +287,15 @@ src/
 Before submitting a pull request, make sure:
 
 - [ ] Code follows the project's coding standards
-- [ ] All existing tests pass
+- [ ] All existing tests pass (`just dev` is green)
 - [ ] New tests are added for new functionality
 - [ ] Code is properly formatted (`cargo fmt`)
 - [ ] No clippy warnings (`cargo clippy`)
-- [ ] Documentation is updated (if applicable)
-- [ ] Commit messages follow conventions
+- [ ] Documentation is updated (if applicable), including both user guides for user-visible changes
+- [ ] Commit messages follow conventions and are in English
 - [ ] PR title is clear and descriptive
 - [ ] PR description explains the changes
+- [ ] Dependencies are up to date, or outdated ones are justified; `cargo audit` is clean
 
 ## 📋 Review Process
 
@@ -281,6 +308,12 @@ Once you submit a pull request:
 5. **Merge**: Once approved and all checks pass, your PR will be merged
 
 We strive to provide constructive feedback and guide you through the process. Don't be discouraged by requests for changes - they're meant to help improve your contribution!
+
+## 🧹 After Your PR Is Merged
+
+- Check that CI still passes on `main`
+- Update the release notes / changelog if your change is user-visible
+- Clean up your local branches: `git branch -d <branch>` and `git remote prune origin`
 
 ## 🎁 Recognition
 
@@ -314,4 +347,4 @@ Happy coding! 🚀
 
 **Maintainers**: HeelonBackup Team
 
-**Last Updated**: October 7, 2026
+**Last Updated**: November 6, 2026

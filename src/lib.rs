@@ -7,6 +7,8 @@
 pub mod backup;
 pub mod cli;
 pub mod config;
+pub(crate) mod console;
 pub mod error;
+pub(crate) mod service;
 pub mod storage;
 pub mod ui;

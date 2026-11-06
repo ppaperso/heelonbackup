@@ -8,9 +8,10 @@
 2. [Installation](#-installation)
 3. [Configuration](#-configuration)
 4. [Basic Usage](#-basic-usage)
-5. [Advanced Features](#-advanced-features)
-6. [Troubleshooting](#-troubleshooting)
-7. [Security Considerations](#-security-considerations)
+5. [Interactive Mode](#️-interactive-mode)
+6. [Advanced Features](#-advanced-features)
+7. [Troubleshooting](#-troubleshooting)
+8. [Security Considerations](#-security-considerations)
 
 ## 📖 Introduction
 
@@ -184,20 +185,30 @@ Here's a detailed explanation of all configuration options:
 }
 ```
 
+#### General Options
+
+| Option | Type | Required | Default | Description |
+|--------|------|----------|---------|-------------|
+| `log_level` | string | No | "warn" | Log level for diagnostics (error, warn, info, debug, trace) |
+| `language` | string | No | "en" | Language of the interactive console: "en" or "fr" (set from the « Langue / Language » menu entry) |
+
 ### Environment Variables
 
 HeelonBackup supports the following environment variables:
 
 #### `HEELONBACKUP_SMB_PASSWORD`
 
-The SMB password can be provided via this environment variable instead of storing it in the configuration file:
+In an **interactive terminal**, the SMB password is asked with a **masked prompt** when the NAS connection starts — it is never read from the environment, never stored in the shell history, and never displayed:
 
 ```bash
-# Set password for the current session
-export HEELONBACKUP_SMB_PASSWORD="your_secure_password"
+heelonbackup backup   # asks "SMB password for user@nas: " (hidden input)
+```
 
-# Run backup with password from environment
-heelonbackup backup
+For **non-interactive runs only** (scripts, cron, `sudo` without a tty), provide the password via the environment variable:
+
+```bash
+# Non-interactive run (script/cron) with the password from the environment
+HEELONBACKUP_SMB_PASSWORD="your_secure_password" heelonbackup backup
 ```
 
 This is the **recommended** way to provide the password, as it's more secure than storing it in a configuration file.
@@ -347,20 +358,45 @@ heelonbackup verify --deep
 To restore files from a backup:
 
 ```bash
-# Dry run (shows what would be restored without actually doing it)
-heelonbackup restore 20261007_143022 /home/user/restored
+# Dry run: plan only, nothing is written
+heelonbackup restore 20261007_143022 --target /home/user/restored --dry-run
 
-# Actual restore
-heelonbackup restore 20261007_143022 /home/user/restored --execute
+# Actual restore under a target folder (without --dry-run, files are written)
+heelonbackup restore 20261007_143022 --target /home/user/restored
 
-# Restore specific files only
-heelonbackup restore 20261007_143022 /home/user/restored --files "/home/user/Documents/important.pdf"
+# Restore only specific original paths (repeatable)
+heelonbackup restore 20261007_143022 --target /home/user/restored \
+  --path /home/user/Documents --path /home/user/Pictures
 
-# Restore files matching a pattern
-heelonbackup restore 20261007_143022 /home/user/restored --pattern "*.pdf"
+# Replace existing files that differ, and list the planned action per file
+heelonbackup restore 20261007_143022 --target /home/user/restored --overwrite --list
 ```
 
-Replace `20261007_143022` with your backup name (timestamp).
+Replace `20261007_143022` with your backup name (timestamp). Without `--target`, files are restored to their original absolute locations. In the interactive console (`heelonbackup` without subcommand), a dry run is always shown first and an explicit confirmation is required before any write.
+
+## 🖥️ Interactive Mode
+
+Running `heelonbackup` **without a subcommand** opens an interactive console (menu-driven dialogues, no full-screen UI):
+
+```text
+? HeelonBackup — what would you like to do? ›
+❯ Start a backup
+  Status
+  Verify a backup
+  Restore
+  Configuration
+  Langue / Language
+  Quit
+```
+
+- **Start a backup**: configured sources or specific paths; a **dry run is always proposed first**, and a real transfer only starts after an explicit confirmation.
+- **Status**: last backup summary, detailed view, or full local history (same output as `heelonbackup status`).
+- **Verify a backup**: pick a backup on the NAS (or the latest usable one), with optional deep SHA-256 verification.
+- **Restore**: pick a backup, a target folder (empty = original locations) and optional path filters; a dry run is always run first.
+- **Configuration**: show the configuration file, print its path, or open it in `$EDITOR`.
+- **Langue / Language**: switch the console between English and French for the session; the choice is saved in the configuration file (`"language": "en"` or `"fr"`, default `"en"`).
+
+Every flow uses the same engine as the CLI commands, so output, progress bars and exit codes are identical. The SMB password is asked with a masked (hidden) prompt and is never stored or displayed; `HEELONBACKUP_SMB_PASSWORD` is only used for non-interactive runs. `Esc` / `q` / `Ctrl-C` leave the current dialogue cleanly; `Ctrl-C` during a transfer interrupts it (exit code 130, like the CLI). Passing any subcommand keeps the classic CLI behavior.
 
 ## 🚀 Advanced Features
 
@@ -490,10 +526,10 @@ error: SMB authentication failed: session setup failed
 **Solution:**
 - Verify your username and password
 - Check if the user has access to the share
-- Try using the environment variable:
+- In a terminal the password is asked masked at launch; for scripts/cron, use the environment variable:
 
 ```bash
-export HEELONBACKUP_SMB_PASSWORD="your_password"
+export HEELONBACKUP_SMB_PASSWORD="your_password"   # non-interactive runs only
 heelonbackup backup
 ```
 
@@ -586,13 +622,13 @@ smbclient //nas-ip/share -U your_username -c "ls"
 
 ### Password Security
 
-**Best Practice**: Always use the environment variable for your SMB password instead of storing it in the configuration file:
+**Best Practice**: in a terminal, the SMB password is asked with a masked prompt — it is never stored on disk nor in the shell history. For non-interactive runs (scripts, cron), use the environment variable, never a hardcoded password:
 
 ```bash
-export HEELONBACKUP_SMB_PASSWORD="your_password"
+export HEELONBACKUP_SMB_PASSWORD="your_password"   # non-interactive runs only
 ```
 
-This ensures the password is not stored on disk and is only available for the current session.
+The password is passed to `smbclient` only through its `PASSWD` environment variable: never on a command line, never in logs or error messages.
 
 ### Encryption
 

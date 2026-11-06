@@ -163,6 +163,9 @@ pub struct Config {
     /// Log level for diagnostics (error, warn, info, debug, trace)
     #[serde(default = "default_log_level")]
     pub log_level: String,
+    /// Language of the interactive console ("en" or "fr")
+    #[serde(default = "default_language")]
+    pub language: String,
 }
 
 fn default_timeout() -> u64 {
@@ -196,6 +199,10 @@ fn default_retention() -> usize {
 
 fn default_log_level() -> String {
     "warn".to_string()
+}
+
+fn default_language() -> String {
+    "en".to_string()
 }
 
 impl Default for BackupConfig {
@@ -243,6 +250,7 @@ impl Default for Config {
             backup: BackupConfig::default(),
             storage: StorageConfig::default(),
             log_level: default_log_level(),
+            language: default_language(),
         }
     }
 }
@@ -315,6 +323,11 @@ pub fn is_safe_for_smbclient(s: &str) -> bool {
 /// True if `s` is a single, safe remote path component
 pub fn is_safe_component(s: &str) -> bool {
     !s.is_empty() && s != "." && s != ".." && !s.contains('/') && is_safe_for_smbclient(s)
+}
+
+/// `Some` only when the value exists and is not empty
+fn non_empty(value: Option<String>) -> Option<String> {
+    value.filter(|s| !s.is_empty())
 }
 
 impl Config {
@@ -397,6 +410,12 @@ impl Config {
                 "backup.workers must be between 1 and 16".into(),
             ));
         }
+        if self.language != "en" && self.language != "fr" {
+            return Err(ConfigError::Invalid(format!(
+                "language must be \"en\" or \"fr\" (got `{}`)",
+                self.language
+            )));
+        }
         self.remote_base()?;
         Ok(())
     }
@@ -438,27 +457,40 @@ impl Config {
         })
     }
 
-    /// Password from the environment, the configuration, or an interactive prompt
+    /// Password resolution order:
+    ///
+    /// 1. interactive terminal (stdin is a tty): masked prompt when the NAS
+    ///    connection starts — the password is a secret typed by the user, never
+    ///    taken from the environment in an interactive session;
+    /// 2. non-interactive (scripts, cron, sudo without a tty): `HEELONBACKUP_SMB_PASSWORD`
+    ///    (when set and not empty), then `smb.password` from the configuration file;
+    /// 3. otherwise a clear error (never a prompt on a pipe).
     pub fn resolve_password(&self) -> Result<String, ConfigError> {
-        if let Ok(password) = std::env::var(PASSWORD_ENV) {
-            return Ok(password);
-        }
-        if let Some(password) = &self.smb.password {
-            return Ok(password.clone());
-        }
         if std::io::stdin().is_terminal() {
             let target = SmbTarget::parse(&self.smb.url)?;
-            return rpassword::prompt_password(format!(
-                "SMB password for {}@{}: ",
-                self.smb.username, target.host
-            ))
-            .map_err(|source| ConfigError::Io {
-                path: PathBuf::from("/dev/tty"),
-                source,
-            });
+            loop {
+                let password = rpassword::prompt_password(format!(
+                    "SMB password for {}@{}: ",
+                    self.smb.username, target.host
+                ))
+                .map_err(|source| ConfigError::Io {
+                    path: PathBuf::from("/dev/tty"),
+                    source,
+                })?;
+                if !password.is_empty() {
+                    return Ok(password);
+                }
+                eprintln!("the password must not be empty");
+            }
+        }
+        if let Some(password) = non_empty(std::env::var(PASSWORD_ENV).ok()) {
+            return Ok(password);
+        }
+        if let Some(password) = non_empty(self.smb.password.clone()) {
+            return Ok(password);
         }
         Err(ConfigError::Invalid(format!(
-            "no SMB password available: set {PASSWORD_ENV} or smb.password"
+            "no SMB password available: run interactively for a masked prompt, or set {PASSWORD_ENV} (non-interactive runs only)"
         )))
     }
 }
@@ -538,6 +570,35 @@ mod tests {
             Environment::Dev.history_dir().parent(),
             Some(Environment::Dev.config_path().parent().unwrap())
         );
+    }
+
+    #[test]
+    fn language_defaults_to_en_and_is_validated() {
+        let mut config = Config::default();
+        assert_eq!(config.language, "en");
+        assert!(config.validate().is_ok());
+        config.language = "fr".into();
+        assert!(config.validate().is_ok());
+        config.language = "de".into();
+        let err = config.validate().unwrap_err();
+        assert!(matches!(err, ConfigError::Invalid(_)));
+        assert!(err.to_string().contains("language"));
+    }
+
+    #[test]
+    fn legacy_config_without_language_is_en() {
+        let json = r#"{"smb":{"url":"smb://nas/b","username":"u"},
+            "backup":{"sources":["/tmp"]}}"#;
+        let config: Config = serde_json::from_str(json).unwrap();
+        assert_eq!(config.language, "en");
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn non_empty_password_values() {
+        assert_eq!(non_empty(None), None);
+        assert_eq!(non_empty(Some(String::new())), None);
+        assert_eq!(non_empty(Some("x".into())), Some("x".into()));
     }
 
     #[test]
