@@ -8,9 +8,10 @@
 2. [Installation](#-installation)
 3. [Configuration](#-configuration)
 4. [Basic Usage](#-basic-usage)
-5. [Advanced Features](#-advanced-features)
-6. [Troubleshooting](#-troubleshooting)
-7. [Security Considerations](#-security-considerations)
+5. [Interactive Mode](#️-interactive-mode)
+6. [Advanced Features](#-advanced-features)
+7. [Troubleshooting](#-troubleshooting)
+8. [Security Considerations](#-security-considerations)
 
 ## 📖 Introduction
 
@@ -368,6 +369,30 @@ heelonbackup restore 20261007_143022 /home/user/restored --pattern "*.pdf"
 ```
 
 Replace `20261007_143022` with your backup name (timestamp).
+
+## 🖥️ Interactive Mode
+
+Running `heelonbackup` **without a subcommand** opens an interactive console (menu-driven dialogues, no full-screen UI):
+
+```text
+? HeelonBackup — what would you like to do? ›
+❯ Start a backup
+  Status
+  Verify a backup
+  Restore
+  Configuration
+  Langue / Language
+  Quit
+```
+
+- **Start a backup**: configured sources or specific paths; a **dry run is always proposed first**, and a real transfer only starts after an explicit confirmation.
+- **Status**: last backup summary, detailed view, or full local history (same output as `heelonbackup status`).
+- **Verify a backup**: pick a backup on the NAS (or the latest usable one), with optional deep SHA-256 verification.
+- **Restore**: pick a backup, a target folder (empty = original locations) and optional path filters; a dry run is always run first.
+- **Configuration**: show the configuration file, print its path, or open it in `$EDITOR`.
+- **Langue / Language**: switch the console between English and French for the session; the choice is saved in the configuration file (`"language": "en"` or `"fr"`, default `"en"`).
+
+Every flow uses the same engine as the CLI commands, so output, progress bars and exit codes are identical. The SMB password is asked with a hidden prompt (or read from `HEELONBACKUP_SMB_PASSWORD`) and is never stored or displayed. `Esc` / `q` / `Ctrl-C` leave the current dialogue cleanly; `Ctrl-C` during a transfer interrupts it (exit code 130, like the CLI). Passing any subcommand keeps the classic CLI behavior.
 
 ## 🚀 Advanced Features
 

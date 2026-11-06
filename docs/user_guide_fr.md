@@ -8,9 +8,10 @@
 2. [Installation](#-installation)
 3. [Configuration](#-configuration)
 4. [Utilisation de Base](#-utilisation-de-base)
-5. [Fonctionnalités Avancées](#-fonctionnalités-avancées)
-6. [Dépannage](#-dépannage)
-7. [Considérations de Sécurité](#-considérations-de-sécurité)
+5. [Mode Interactif](#️-mode-interactif)
+6. [Fonctionnalités Avancées](#-fonctionnalités-avancées)
+7. [Dépannage](#-dépannage)
+8. [Considérations de Sécurité](#-considérations-de-sécurité)
 
 ## 📖 Introduction
 
@@ -368,6 +369,30 @@ heelonbackup restore 20261007_143022 /home/user/restaure --pattern "*.pdf"
 ```
 
 Remplacez `20261007_143022` par le nom de votre sauvegarde (horodatage).
+
+## 🖥️ Mode Interactif
+
+Exécuter `heelonbackup` **sans sous-commande** ouvre une console interactive (dialogues par menus, pas d'interface plein écran) :
+
+```text
+? HeelonBackup — que souhaitez-vous faire ? ›
+❯ Lancer un backup
+  Statut
+  Vérifier un backup
+  Restaurer
+  Configuration
+  Langue / Language
+  Quitter
+```
+
+- **Lancer un backup** : sources configurées ou chemins précis ; un **dry-run est toujours proposé d'abord**, et un vrai transfert ne démarre qu'après une confirmation explicite.
+- **Statut** : résumé du dernier backup, vue détaillée ou historique complet (même affichage que `heelonbackup status`).
+- **Vérifier un backup** : choix d'un backup sur le NAS (ou du dernier utilisable), avec vérification approfondie SHA-256 optionnelle.
+- **Restaurer** : choix d'un backup, d'un dossier cible (vide = emplacements d'origine) et de filtres de chemins optionnels ; un dry-run est toujours exécuté d'abord.
+- **Configuration** : afficher le fichier de configuration, afficher son chemin ou l'ouvrir dans `$EDITOR`.
+- **Langue / Language** : bascule la console entre anglais et français pour la session ; le choix est enregistré dans le fichier de configuration (`"language" : "en"` ou `"fr"`, défaut `"en"`).
+
+Chaque flux utilise le même moteur que les commandes CLI : affichages, barres de progression et codes de sortie sont identiques. Le mot de passe SMB est demandé via une saisie masquée (ou lu depuis `HEELONBACKUP_SMB_PASSWORD`) et n'est jamais stocké ni affiché. `Échap` / `q` / `Ctrl-C` quittent proprement le dialogue courant ; `Ctrl-C` pendant un transfert l'interrompt (code de sortie 130, comme en CLI). Toute sous-commande conserve le comportement CLI classique.
 
 ## 🚀 Fonctionnalités Avancées
 

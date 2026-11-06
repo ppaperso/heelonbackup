@@ -148,6 +148,23 @@ export HEELONBACKUP_ENV=dev
 
 ## 🎯 Commands
 
+### 🖥️ Interactive Mode
+
+Run `heelonbackup` **without a subcommand** to open the interactive console (bilingual EN/FR, menu-driven):
+
+```text
+? HeelonBackup — what would you like to do? ›
+❯ Start a backup
+  Status
+  Verify a backup
+  Restore
+  Configuration
+  Langue / Language
+  Quit
+```
+
+Guided flows: backup (a dry run is always proposed before any real transfer), status, verify, restore (dry run first) and configuration. Every subcommand below keeps the classic CLI behavior. Details in the [user guide](docs/user_guide.md) and [guide utilisateur](docs/user_guide_fr.md).
+
 ### 💾 Backup
 
 ```bash

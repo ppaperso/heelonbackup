@@ -12,6 +12,7 @@ This document provides a complete reference for all HeelonBackup command-line op
 6. [restore](#restore)
 7. [config](#config)
 8. [completions](#completions)
+9. [Interactive Mode (no subcommand)](#interactive-mode-no-subcommand)
 
 ## Global Options
 
@@ -420,3 +421,7 @@ HeelonBackup uses the following exit codes:
 ## Configuration File
 
 For configuration file options, see [Configuration Reference](configuration.md).
+
+## Interactive Mode (no subcommand)
+
+Running `heelonbackup` with **no subcommand** opens the interactive console (menu-driven dialogues, bilingual EN/FR) instead of printing this help. It offers guided flows for backup, status, verify, restore and configuration, using the same engine as the commands documented above. All subcommands remain unchanged and fully supported; see the user guides for the « Interactive Mode » section.
