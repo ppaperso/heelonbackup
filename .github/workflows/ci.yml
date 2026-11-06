@@ -47,6 +47,24 @@ jobs:
     - name: Run clippy
       run: cargo clippy --all-targets --all-features -- -D warnings
 
+  msrv:
+    name: MSRV (1.99)
+    runs-on: ubuntu-latest
+    steps:
+    - uses: actions/checkout@v4.1.1
+
+    - name: Install Rust 1.99
+      uses: dtolnay/rust-toolchain@1.99
+
+    - name: Cache dependencies
+      uses: Swatinem/rust-cache@v2
+
+    # --locked: check the committed Cargo.lock as is. Cargo refuses to build any
+    # dependency whose rust-version is above the active toolchain, so this job
+    # fails as soon as a dependency requires more than 1.99.
+    - name: Check
+      run: cargo check --locked --all-targets --verbose
+
   release:
     name: Release Build
     runs-on: ubuntu-latest
