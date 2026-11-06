@@ -344,6 +344,7 @@ heelonbackup config [OPTIONS] [ACTION]
 | `path` | Print the path of the configuration file |
 | `check` | Validate the configuration file and resolve the configured sources (they must exist on disk); prints a summary and a final verdict. Exit 0 (`✅`) when valid, 1 with the error otherwise. No network access — use `list` to test the NAS connection |
 | `show` | Show the current configuration |
+| `sources` | List the configured sources — `✓` found on disk (with the resolved path), `✗` missing (skipped by the backup) — then the exclude patterns. Exit 0 when every source exists, 2 otherwise. No network access |
 
 ### Options
 
@@ -363,6 +364,9 @@ heelonbackup config check
 
 # Show current configuration
 heelonbackup config show
+
+# List the sources and exclude patterns
+heelonbackup config sources
 
 # Create configuration at a specific path
 heelonbackup --config /path/to/config.json config init

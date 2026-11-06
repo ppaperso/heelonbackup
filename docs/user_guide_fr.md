@@ -272,6 +272,12 @@ heelonbackup config check
 
 Cela validera le fichier de configuration et signalera toute erreur.
 
+Pour voir les sources configurées (✓ trouvée sur le disque, ✗ absente) et les motifs d'exclusion :
+
+```bash
+heelonbackup config sources
+```
+
 ## 🎯 Utilisation de Base
 
 ### Réaliser votre première sauvegarde
@@ -385,12 +391,13 @@ Remplacez `20261007_143022` par le nom de votre sauvegarde (horodatage). Sans `-
 Exécuter `heelonbackup` **sans sous-commande** ouvre la console interactive, un tableau de bord plein écran :
 
 ```text
- HeelonBackup v0.1.0   PROD                                    2026-11-06 14:32:05    EN | FR
+ HeelonBackup v0.1.0   PROD                                     2026-11-06 14:32:05    EN | FR
 ╭ NAS ─────────────────────────────────────╮╭ Dernière sauvegarde ───────────────────────────╮
 │ ● EN LIGNE  192.168.1.100:445 · 3 ms     ││ Statut       Terminée                          │
 │ Partage      //192.168.1.100/backup      ││ Date         2026-11-05 22:00 (il y a 16 h)    │
 │ Dossier      laptop/heelonbackup         ││ Taille       12.40 GiB · 41238 fichiers        │
-│ Sources      3 · rétention 7             ││ Durée        18m 02s                           │
+│ Sources      (3) ~/Documents, ~/Pictures,││ Durée        18m 02s                           │
+│ Rétention    7                           ││                                                │
 │ Chiffrement  activé                      ││                                                │
 ╰──────────────────────────────────────────╯╰────────────────────────────────────────────────╯
 ╭ Actions ──────────────────╮╭ Terminal — ⠹ En cours : Lancer une sauvegarde ────────────────╮
@@ -403,23 +410,24 @@ Exécuter `heelonbackup` **sans sous-commande** ouvre la console interactive, un
 │  L Langue / Language      ││ Uploading 48% · 5.95 GiB/12.40 GiB · 85 MiB/s · ETA 1m 17s    │
 │  q Quitter                ││                                                               │
 ╰───────────────────────────╯╰───────────────────────────────────────────────────────────────╯
- Ctrl-C interrompre · PgPréc/PgSuiv défiler
+ Ctrl-C interrompre · Tab changer de panneau
 ```
 
 - **En-tête** : version, environnement (`DEV` en rouge quand `HEELONBACKUP_ENV=dev`, `PROD` sinon), date et heure en direct, langue active.
 - **Panneau NAS** : `EN LIGNE` / `HORS LIGNE` avec le temps de réponse, vérifié en arrière-plan toutes les 15 secondes et après chaque opération (connexion TCP au port SMB : aucun mot de passe nécessaire, même vérification que `heelonbackup ping`), plus le partage, le dossier, les sources, la rétention et le chiffrement issus de la configuration.
 - **Panneau Dernière sauvegarde** : statut, date et ancienneté, taille, nombre de fichiers et durée de la dernière sauvegarde faite depuis cet ordinateur ; le dernier succès s'il diffère, et un avertissement au-delà de 7 jours.
-- **Panneau Terminal** : la sortie de l'opération en cours, horodatée, et sa progression en direct (pourcentage, tailles, débit, temps restant). `PgPréc` / `PgSuiv` / `Début` / `Fin` la font défiler.
+- **Panneau Terminal** : la sortie de l'opération en cours, horodatée, et sa progression en direct (pourcentage, tailles, débit, temps restant). Voir « Focus » ci-dessous pour la faire défiler.
 - **Actions** : choix avec `↑` `↓` + `Entrée`, ou via la lettre de raccourci affichée devant chaque entrée.
+- **Focus** : les flèches agissent sur le panneau à la bordure épaisse cyan. `Tab` (ou `→` / `←`) passe d'Actions à Terminal. Dans le terminal, `↑` `↓` défilent ligne par ligne, `PgPréc` / `PgSuiv` par page, `Début` / `Fin` vont en haut / en bas, et `Échap` revient au menu ; les lettres de raccourci restent actives. Quand la sortie d'une opération ne tient pas (ex. la configuration), le terminal prend le focus et l'affiche depuis sa première ligne.
 
 Actions :
 
-- **Lancer un backup** : sources configurées ou chemins précis ; un **dry-run est toujours proposé d'abord**, et un vrai transfert ne démarre qu'après une confirmation explicite.
+- **Lancer un backup** : les sources configurées sont d'abord listées (✓ trouvée, ✗ absente, plus le nombre de motifs d'exclusion), puis on choisit entre elles (sauvegarde complète, applique la rétention) et des fichiers/dossiers précis (sauvegarde partielle, ne déclenche jamais la rétention) ; un **dry-run est toujours proposé d'abord**, et un vrai transfert ne démarre qu'après une confirmation explicite.
 - **Statut / historique** : résumé du dernier backup, vue détaillée ou historique complet (même affichage que `heelonbackup status`).
 - **Sauvegardes sur le NAS** : toutes les sauvegardes stockées sur le NAS (même affichage que `heelonbackup list`).
 - **Vérifier un backup** : choix d'un backup sur le NAS (ou du dernier utilisable), avec vérification approfondie SHA-256 optionnelle.
 - **Restaurer** : choix d'un backup, d'un dossier cible (vide = emplacements d'origine) et de filtres de chemins optionnels ; un dry-run est toujours exécuté d'abord.
-- **Configuration** : afficher le fichier de configuration, le valider, afficher son chemin ou l'ouvrir dans `$EDITOR` (le tableau de bord s'efface le temps de l'édition).
+- **Configuration** : afficher le fichier de configuration, afficher les sources et motifs d'exclusion, le valider, afficher son chemin ou l'ouvrir dans `$EDITOR` (le tableau de bord s'efface le temps de l'édition).
 - **Langue / Language** (`L`) : bascule la console entre anglais et français ; le choix est enregistré dans le fichier de configuration (`"language" : "en"` ou `"fr"`, défaut `"en"`). La sortie des opérations dans le panneau Terminal reste en anglais, comme en CLI.
 
 Chaque flux utilise le même moteur que les commandes CLI : la sortie affichée dans le panneau Terminal est identique à celle de la CLI. Le mot de passe SMB est demandé **une seule fois par session** dans une boîte de saisie masquée (jamais affiché), gardé en mémoire uniquement et oublié à la fermeture de la console ou si le NAS le refuse ; `HEELONBACKUP_SMB_PASSWORD` n'est utilisée que pour les runs non interactifs. Dans une boîte de dialogue, `Échap` / `Ctrl-C` annulent et reviennent en arrière. Pendant une opération, `Ctrl-C` l'interrompt et le tableau de bord reste ouvert ; sinon `q`, `Échap` ou `Ctrl-C` quittent (code de sortie 0). Sans terminal, la console refuse de démarrer (code de sortie 1). Toute sous-commande conserve le comportement CLI classique.

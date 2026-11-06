@@ -272,6 +272,12 @@ heelonbackup config check
 
 This will validate the configuration file and report any errors.
 
+To see the configured sources (✓ found on disk, ✗ missing) and the exclude patterns:
+
+```bash
+heelonbackup config sources
+```
+
 ## 🎯 Basic Usage
 
 ### Making Your First Backup
@@ -385,12 +391,13 @@ Replace `20261007_143022` with your backup name (timestamp). Without `--target`,
 Running `heelonbackup` **without a subcommand** opens the interactive console, a full-screen dashboard:
 
 ```text
- HeelonBackup v0.1.0   PROD                                    2026-11-06 14:32:05    EN | FR
+ HeelonBackup v0.1.0   PROD                                     2026-11-06 14:32:05    EN | FR
 ╭ NAS ─────────────────────────────────────╮╭ Last backup ───────────────────────────────────╮
 │ ● ONLINE  192.168.1.100:445 · 3 ms       ││ Status       Completed                         │
 │ Share        //192.168.1.100/backup      ││ Date         2026-11-05 22:00 (16 h ago)       │
 │ Folder       laptop/heelonbackup         ││ Size         12.40 GiB · 41238 files           │
-│ Sources      3 · retention 7             ││ Duration     18m 02s                           │
+│ Sources      (3) ~/Documents, ~/Pictures,││ Duration     18m 02s                           │
+│ Retention    7                           ││                                                │
 │ Encryption   on                          ││                                                │
 ╰──────────────────────────────────────────╯╰────────────────────────────────────────────────╯
 ╭ Actions ──────────────────╮╭ Terminal — ⠹ Running: Start a backup ─────────────────────────╮
@@ -403,23 +410,24 @@ Running `heelonbackup` **without a subcommand** opens the interactive console, a
 │  L Langue / Language      ││ Uploading 48% · 5.95 GiB/12.40 GiB · 85 MiB/s · ETA 1m 17s    │
 │  q Quit                   ││                                                               │
 ╰───────────────────────────╯╰───────────────────────────────────────────────────────────────╯
- Ctrl-C interrupt · PgUp/PgDn scroll
+ Ctrl-C interrupt · Tab switch panel
 ```
 
 - **Header**: version, environment (`DEV` in red when `HEELONBACKUP_ENV=dev`, `PROD` otherwise), live date and time, active language.
 - **NAS panel**: `ONLINE` / `OFFLINE` with the response time, checked in the background every 15 seconds and after each operation (a TCP connection to the SMB port: no password needed, same check as `heelonbackup ping`), plus the share, folder, sources, retention and encryption from the configuration.
 - **Last backup panel**: status, date and age, size, file count and duration of the last backup made from this computer; the last successful one if it differs, and a warning when it is more than 7 days old.
-- **Terminal pane**: the output of the running operation, with timestamps, and its live progress (percentage, sizes, rate, ETA). `PgUp` / `PgDn` / `Home` / `End` scroll it.
+- **Terminal pane**: the output of the running operation, with timestamps, and its live progress (percentage, sizes, rate, ETA).
 - **Actions**: choose with `↑` `↓` + `Enter`, or press the shortcut letter shown in front of each entry.
+- **Focus**: the arrow keys act on the panel with the thick cyan border. `Tab` (or `→` / `←`) moves between Actions and Terminal. In the terminal, `↑` `↓` scroll line by line, `PgUp` / `PgDn` by page, `Home` / `End` go to the top / bottom, and `Esc` goes back to the menu; the shortcut letters keep working. When an operation's output does not fit (e.g. the configuration), the terminal takes the focus and shows it from its first line.
 
 Actions:
 
-- **Start a backup**: configured sources or specific paths; a **dry run is always proposed first**, and a real transfer only starts after an explicit confirmation.
+- **Start a backup**: the configured sources are listed first (✓ found, ✗ missing, plus the number of exclude patterns), then you choose between them (full backup, applies retention) and specific files/folders (partial backup, never triggers retention); a **dry run is always proposed first**, and a real transfer only starts after an explicit confirmation.
 - **Status / history**: last backup summary, detailed view, or full local history (same output as `heelonbackup status`).
 - **Backups on the NAS**: every backup stored on the NAS (same output as `heelonbackup list`).
 - **Verify a backup**: pick a backup on the NAS (or the latest usable one), with optional deep SHA-256 verification.
 - **Restore**: pick a backup, a target folder (empty = original locations) and optional path filters; a dry run is always run first.
-- **Configuration**: show the configuration file, validate it, print its path, or open it in `$EDITOR` (the dashboard steps aside while the editor runs).
+- **Configuration**: show the configuration file, show the sources and exclude patterns, validate it, print its path, or open it in `$EDITOR` (the dashboard steps aside while the editor runs).
 - **Langue / Language** (`L`): switch the console between English and French; the choice is saved in the configuration file (`"language": "en"` or `"fr"`, default `"en"`). The operation output in the terminal pane stays in English, like the CLI.
 
 Every flow uses the same engine as the CLI commands, so the output in the terminal pane is identical to the CLI output. The SMB password is asked **once per console session** in a masked dialog (never displayed), kept in memory only and forgotten when the console closes or when the NAS rejects it; `HEELONBACKUP_SMB_PASSWORD` is only used for non-interactive runs. In a dialog, `Esc` / `Ctrl-C` cancel and go back. While an operation runs, `Ctrl-C` interrupts it and the dashboard stays open; otherwise `q`, `Esc` or `Ctrl-C` quit (exit code 0). Without a terminal, the console refuses to start (exit code 1). Passing any subcommand keeps the classic CLI behavior.

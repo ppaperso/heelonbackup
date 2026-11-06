@@ -153,12 +153,13 @@ export HEELONBACKUP_ENV=dev
 Run `heelonbackup` **without a subcommand** to open the interactive console: a full-screen dashboard (bilingual EN/FR) showing the version, environment, live date/time, NAS state (online/offline), the last backup, and a terminal pane that follows the running operation live:
 
 ```text
- HeelonBackup v0.1.0   PROD                                    2026-11-06 14:32:05    EN | FR
+ HeelonBackup v0.1.0   PROD                                     2026-11-06 14:32:05    EN | FR
 ╭ NAS ─────────────────────────────────────╮╭ Last backup ───────────────────────────────────╮
 │ ● ONLINE  192.168.1.100:445 · 3 ms       ││ Status       Completed                         │
 │ Share        //192.168.1.100/backup      ││ Date         2026-11-05 22:00 (16 h ago)       │
 │ Folder       laptop/heelonbackup         ││ Size         12.40 GiB · 41238 files           │
-│ Sources      3 · retention 7             ││ Duration     18m 02s                           │
+│ Sources      (3) ~/Documents, ~/Pictures,││ Duration     18m 02s                           │
+│ Retention    7                           ││                                                │
 │ Encryption   on                          ││                                                │
 ╰──────────────────────────────────────────╯╰────────────────────────────────────────────────╯
 ╭ Actions ──────────────────╮╭ Terminal — ⠹ Running: Start a backup ─────────────────────────╮
@@ -171,7 +172,7 @@ Run `heelonbackup` **without a subcommand** to open the interactive console: a f
 │  L Langue / Language      ││ Uploading 48% · 5.95 GiB/12.40 GiB · 85 MiB/s · ETA 1m 17s    │
 │  q Quit                   ││                                                               │
 ╰───────────────────────────╯╰───────────────────────────────────────────────────────────────╯
- Ctrl-C interrupt · PgUp/PgDn scroll
+ Ctrl-C interrupt · Tab switch panel
 ```
 
 Guided flows: backup (a dry run is always proposed before any real transfer), status, backups on the NAS, verify, restore (dry run first) and configuration. Every subcommand below keeps the classic CLI behavior. Details in the [user guide](docs/user_guide.md) and [guide utilisateur](docs/user_guide_fr.md).
