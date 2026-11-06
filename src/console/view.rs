@@ -1,7 +1,7 @@
 //! Dashboard rendering (ratatui): header, NAS and last-backup panels, actions,
 //! terminal pane with live progress, key help, modal dialogs
 
-use super::app::{App, MENU, Nas};
+use super::app::{App, Focus, MENU, Nas};
 use super::prompt::Kind;
 use super::strings::{Lang, Strings};
 use crate::config::{Environment, SmbTarget};
@@ -11,11 +11,12 @@ use crate::ui::{self, Stream};
 use chrono::Local;
 use indicatif::ProgressBar;
 use ratatui::Frame;
-use ratatui::layout::{Alignment, Constraint, Layout, Rect};
+use ratatui::layout::{Alignment, Constraint, Layout, Margin, Rect};
 use ratatui::style::{Color, Modifier, Style, Stylize};
 use ratatui::text::{Line, Span};
 use ratatui::widgets::{
-    Block, BorderType, Clear, Gauge, List, ListItem, ListState, Padding, Paragraph,
+    Block, BorderType, Clear, Gauge, List, ListItem, ListState, Padding, Paragraph, Scrollbar,
+    ScrollbarOrientation, ScrollbarState,
 };
 
 const VERSION: &str = env!("CARGO_PKG_VERSION");
@@ -49,9 +50,19 @@ pub(crate) fn draw(frame: &mut Frame, app: &App) {
 }
 
 fn panel(title: &str) -> Block<'_> {
+    panel_focus(title, false)
+}
+
+/// Panel frame; the panel receiving the arrow keys gets a bright, thick border
+fn panel_focus(title: &str, focused: bool) -> Block<'_> {
+    let (border, style) = if focused {
+        (BorderType::Thick, Style::new().fg(Color::Cyan))
+    } else {
+        (BorderType::Rounded, Style::new().fg(Color::DarkGray))
+    };
     Block::bordered()
-        .border_type(BorderType::Rounded)
-        .border_style(Style::new().fg(Color::DarkGray))
+        .border_type(border)
+        .border_style(style)
         .title(Span::styled(
             format!(" {title} "),
             Style::new().bold().fg(Color::Cyan),
@@ -240,7 +251,10 @@ fn draw_actions(frame: &mut Frame, area: Rect, app: &App, s: &Strings) {
         })
         .collect();
     let list = List::new(items)
-        .block(panel(s.panel_actions))
+        .block(panel_focus(
+            s.panel_actions,
+            app.focus == Focus::Actions && app.dialog.is_none(),
+        ))
         .highlight_style(
             Style::new()
                 .bg(Color::DarkGray)
@@ -277,7 +291,7 @@ fn draw_terminal(frame: &mut Frame, area: Rect, app: &App, s: &Strings) {
             action.label(s)
         );
     }
-    let block = panel(&title);
+    let block = panel_focus(&title, app.focus == Focus::Terminal && app.dialog.is_none());
     let inner = block.inner(area);
     frame.render_widget(block, area);
 
@@ -285,6 +299,7 @@ fn draw_terminal(frame: &mut Frame, area: Rect, app: &App, s: &Strings) {
     let [log_area, bars_area] =
         Layout::vertical([Constraint::Min(1), Constraint::Length(bars.len() as u16)]).areas(inner);
 
+    app.pane_height.set(log_area.height as usize);
     if app.lines.is_empty() {
         let hint = Paragraph::new(Line::from(format!(" {}", s.terminal_empty)).fg(Color::DarkGray));
         frame.render_widget(hint, log_area);
@@ -303,6 +318,15 @@ fn draw_terminal(frame: &mut Frame, area: Rect, app: &App, s: &Strings) {
             })
             .collect();
         frame.render_widget(Paragraph::new(lines), log_area);
+        if app.lines.len() > height {
+            // position of the first visible line among all the possible ones
+            let mut state = ScrollbarState::new(app.lines.len() - height).position(start);
+            let bar = Scrollbar::new(ScrollbarOrientation::VerticalRight)
+                .begin_symbol(None)
+                .end_symbol(None)
+                .thumb_style(Style::new().fg(Color::Cyan));
+            frame.render_stateful_widget(bar, area.inner(Margin::new(0, 1)), &mut state);
+        }
         if app.scroll > 0 {
             let more = format!(" ↓ {} ", app.scroll);
             let w = more.chars().count() as u16;
@@ -361,12 +385,12 @@ fn draw_bar(frame: &mut Frame, area: Rect, pb: &ProgressBar, tick: usize) {
 }
 
 fn draw_footer(frame: &mut Frame, area: Rect, app: &App, s: &Strings) {
-    let keys = if app.dialog.is_some() {
-        s.keys_prompt
-    } else if app.running.is_some() {
-        s.keys_busy
-    } else {
-        s.keys_idle
+    let keys = match (app.dialog.is_some(), app.running.is_some(), app.focus) {
+        (true, _, _) => s.keys_prompt.to_string(),
+        (false, true, Focus::Terminal) => format!("{} · {}", s.keys_terminal, s.keys_busy),
+        (false, true, Focus::Actions) => s.keys_busy.to_string(),
+        (false, false, Focus::Terminal) => s.keys_terminal.to_string(),
+        (false, false, Focus::Actions) => s.keys_idle.to_string(),
     };
     frame.render_widget(Paragraph::new(format!(" {keys}")).fg(Color::DarkGray), area);
 }

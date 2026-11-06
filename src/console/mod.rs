@@ -270,7 +270,7 @@ impl Dashboard {
     fn start(&mut self, action: Action) -> JoinHandle<Result<Exit>> {
         let s = self.app.strings();
         self.app.running = Some(action);
-        self.app.scroll = 0;
+        self.app.mark_flow_start();
         self.app.info(format!("━━ {} ━━", action.label(s)));
         service::clear_interrupt();
         let path = self.config_path.clone();
@@ -327,6 +327,7 @@ impl Dashboard {
                 }
             }
         }
+        self.app.focus_flow_output();
         self.reload();
         self.probe_now.notify_one();
     }

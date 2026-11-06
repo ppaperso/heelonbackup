@@ -11,6 +11,7 @@ use crate::storage::BackupManifest;
 use crate::ui::Stream;
 use chrono::Local;
 use ratatui::crossterm::event::{KeyCode, KeyEvent, KeyModifiers};
+use std::cell::Cell;
 use std::collections::VecDeque;
 use std::time::Duration;
 use tokio::sync::oneshot;
@@ -126,6 +127,15 @@ impl Dialog {
     }
 }
 
+/// Panel receiving the arrow keys
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Focus {
+    /// ↑↓ move in the menu
+    Actions,
+    /// ↑↓ scroll the terminal pane
+    Terminal,
+}
+
 /// One line of the terminal pane
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub(crate) struct LogLine {
@@ -160,6 +170,14 @@ pub(crate) struct App {
     pub suspended: bool,
     /// Animation counter (spinners), advanced by the clock tick
     pub tick: usize,
+    /// Panel receiving the arrow keys
+    pub focus: Focus,
+    /// Height of the terminal pane at the last draw (set by the view)
+    pub pane_height: Cell<usize>,
+    /// Lines ever pushed (to find a flow's first line after old lines were dropped)
+    pushed: usize,
+    /// Value of `pushed` when the current flow started
+    flow_start: usize,
 }
 
 impl App {
@@ -176,6 +194,35 @@ impl App {
             running: None,
             suspended: false,
             tick: 0,
+            focus: Focus::Actions,
+            pane_height: Cell::new(20),
+            pushed: 0,
+            flow_start: 0,
+        }
+    }
+
+    /// Highest useful scroll value: the first line at the top of the pane
+    fn max_scroll(&self) -> usize {
+        self.lines
+            .len()
+            .saturating_sub(self.pane_height.get().max(1))
+    }
+
+    /// Remember where the output of the flow being started begins
+    pub(crate) fn mark_flow_start(&mut self) {
+        self.flow_start = self.pushed;
+        self.scroll = 0;
+    }
+
+    /// After a flow: if its output does not fit in the pane, show it from its
+    /// first line and give the arrows to the terminal, so it can be read with ↓
+    pub(crate) fn focus_flow_output(&mut self) {
+        let dropped = self.pushed - self.lines.len();
+        let first = self.flow_start.saturating_sub(dropped);
+        let height = self.pane_height.get().max(1);
+        if self.lines.len() - first > height {
+            self.focus = Focus::Terminal;
+            self.scroll = self.lines.len() - (first + height);
         }
     }
 
@@ -190,6 +237,7 @@ impl App {
             stream,
             text,
         });
+        self.pushed += 1;
         if self.lines.len() > MAX_LINES {
             self.lines.pop_front();
         } else if self.scroll > 0 {
@@ -223,25 +271,55 @@ impl App {
             self.dialog_key(key, ctrl_c);
             return Command::None;
         }
+        if ctrl_c {
+            return if self.running.is_some() {
+                Command::Interrupt
+            } else {
+                Command::Quit
+            };
+        }
+        // panel focus: Tab toggles, ← menu, → terminal
+        match key.code {
+            KeyCode::Tab | KeyCode::BackTab => {
+                self.focus = match self.focus {
+                    Focus::Actions => Focus::Terminal,
+                    Focus::Terminal => Focus::Actions,
+                };
+                return Command::None;
+            }
+            KeyCode::Left => {
+                self.focus = Focus::Actions;
+                return Command::None;
+            }
+            KeyCode::Right => {
+                self.focus = Focus::Terminal;
+                return Command::None;
+            }
+            _ => {}
+        }
         if self.scroll_key(key.code) {
             return Command::None;
         }
-        if self.running.is_some() {
-            return if ctrl_c {
-                Command::Interrupt
-            } else {
-                match key.code {
-                    KeyCode::Char(c) if Action::from_key(c).is_some() => {
-                        let s = self.strings();
-                        self.info(s.busy_refused);
-                        Command::None
-                    }
-                    _ => Command::None,
-                }
-            };
+        if self.focus == Focus::Terminal {
+            match key.code {
+                KeyCode::Up => self.scroll = (self.scroll + 1).min(self.max_scroll()),
+                KeyCode::Down => self.scroll = self.scroll.saturating_sub(1),
+                KeyCode::Esc => self.focus = Focus::Actions,
+                KeyCode::Char(_) => {} // shortcuts keep working from the terminal
+                _ => return Command::None,
+            }
+            if !matches!(key.code, KeyCode::Char(_)) {
+                return Command::None;
+            }
         }
-        if ctrl_c {
-            return Command::Quit;
+        if self.running.is_some() {
+            if let KeyCode::Char(c) = key.code
+                && Action::from_key(c).is_some()
+            {
+                let s = self.strings();
+                self.info(s.busy_refused);
+            }
+            return Command::None;
         }
         let action = match key.code {
             KeyCode::Up => {
@@ -271,7 +349,7 @@ impl App {
     }
 
     fn scroll_key(&mut self, code: KeyCode) -> bool {
-        let max = self.lines.len().saturating_sub(1);
+        let max = self.max_scroll();
         match code {
             KeyCode::PageUp => self.scroll = (self.scroll + PAGE).min(max),
             KeyCode::PageDown => self.scroll = self.scroll.saturating_sub(PAGE),
@@ -434,6 +512,68 @@ mod tests {
         app.on_key(key(KeyCode::End));
         assert_eq!(app.scroll, 0);
         app.on_key(key(KeyCode::Home));
-        assert_eq!(app.scroll, app.lines.len() - 1);
+        // the first line stays at the top of the pane (default height 20)
+        assert_eq!(app.scroll, app.lines.len() - 20);
+    }
+
+    #[test]
+    fn arrows_scroll_the_terminal_when_it_has_the_focus() {
+        let mut app = App::new(Lang::En);
+        app.pane_height.set(5);
+        for i in 0..12 {
+            app.info(format!("line {i}"));
+        }
+        assert_eq!(app.on_key(key(KeyCode::Tab)), Command::None);
+        assert_eq!(app.focus, Focus::Terminal);
+        app.on_key(key(KeyCode::Up));
+        app.on_key(key(KeyCode::Up));
+        assert_eq!(app.scroll, 2);
+        assert_eq!(app.menu, 0); // the menu did not move
+        app.on_key(key(KeyCode::Down));
+        assert_eq!(app.scroll, 1);
+        for _ in 0..50 {
+            app.on_key(key(KeyCode::Up));
+        }
+        assert_eq!(app.scroll, 7); // 12 lines, 5 visible: stops at the first line
+        // Enter does nothing in the terminal; shortcuts still work
+        assert_eq!(app.on_key(key(KeyCode::Enter)), Command::None);
+        assert_eq!(
+            app.on_key(key(KeyCode::Char('s'))),
+            Command::Start(Action::Status)
+        );
+        // Esc / ← give the arrows back to the menu (Esc does not quit from the terminal)
+        app.on_key(key(KeyCode::Esc));
+        assert_eq!(app.focus, Focus::Actions);
+        app.on_key(key(KeyCode::Right));
+        assert_eq!(app.focus, Focus::Terminal);
+        app.on_key(key(KeyCode::Left));
+        assert_eq!(app.focus, Focus::Actions);
+        app.on_key(key(KeyCode::Down));
+        assert_eq!(MENU[app.menu], Action::List);
+    }
+
+    #[test]
+    fn long_flow_output_is_shown_from_its_first_line() {
+        let mut app = App::new(Lang::En);
+        app.pane_height.set(5);
+        app.info("old output");
+        app.mark_flow_start();
+        for i in 0..10 {
+            app.info(format!("config line {i}"));
+        }
+        app.focus_flow_output();
+        assert_eq!(app.focus, Focus::Terminal);
+        // visible window = [first flow line .. +5)
+        let first_visible = app.lines.len() - app.scroll - 5;
+        assert_eq!(app.lines[first_visible].text, "config line 0");
+
+        // short output: focus and position untouched
+        let mut app = App::new(Lang::En);
+        app.pane_height.set(5);
+        app.mark_flow_start();
+        app.info("one line");
+        app.focus_flow_output();
+        assert_eq!(app.focus, Focus::Actions);
+        assert_eq!(app.scroll, 0);
     }
 }
