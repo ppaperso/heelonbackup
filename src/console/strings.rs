@@ -69,6 +69,10 @@ pub(crate) struct Strings {
     pub backup_list_prompt: &'static str,
     pub backup_dryrun_prompt: &'static str,
     pub backup_run_prompt: &'static str,
+    pub verify_prompt: &'static str,
+    pub verify_latest: &'static str,
+    pub verify_deep_prompt: &'static str,
+    pub no_backup_on_nas: &'static str,
 }
 
 pub(crate) static EN: Strings = Strings {
@@ -102,6 +106,10 @@ pub(crate) static EN: Strings = Strings {
     backup_list_prompt: "List every file in the dry run?",
     backup_dryrun_prompt: "Run a dry run first (recommended)?",
     backup_run_prompt: "Start the real backup now?",
+    verify_prompt: "Which backup do you want to verify?",
+    verify_latest: "Latest usable backup",
+    verify_deep_prompt: "Deep verification (download every file and check its SHA-256; slow)?",
+    no_backup_on_nas: "No backup found on the NAS.",
 };
 
 pub(crate) static FR: Strings = Strings {
@@ -135,6 +143,10 @@ pub(crate) static FR: Strings = Strings {
     backup_list_prompt: "Lister tous les fichiers dans le dry-run ?",
     backup_dryrun_prompt: "Faire d'abord un dry-run (recommandé) ?",
     backup_run_prompt: "Lancer le vrai backup maintenant ?",
+    verify_prompt: "Quel backup voulez-vous vérifier ?",
+    verify_latest: "Dernier backup utilisable",
+    verify_deep_prompt: "Vérification approfondie (télécharge chaque fichier et vérifie le SHA-256 ; lent) ?",
+    no_backup_on_nas: "Aucun backup trouvé sur le NAS.",
 };
 
 #[cfg(test)]

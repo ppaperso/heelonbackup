@@ -2,7 +2,19 @@
 
 use crate::error::{BackupError, Result};
 use crate::service::expand_tilde;
+use crate::storage::backup_manifest::is_backup_name;
 use std::path::PathBuf;
+
+/// A backup name must look like YYYYMMDD_HHMMSS
+pub(crate) fn validate_backup_name(name: &str) -> Result<()> {
+    if is_backup_name(name) {
+        Ok(())
+    } else {
+        Err(BackupError::BackupNotFound(format!(
+            "`{name}` is not a backup name (expected YYYYMMDD_HHMMSS)"
+        )))
+    }
+}
 
 /// Split a comma-separated list of paths, trimming and dropping empty entries
 pub(crate) fn parse_path_list(input: &str) -> Vec<String> {
@@ -30,6 +42,14 @@ pub(crate) fn existing_paths(paths: &[String]) -> Result<Vec<PathBuf>> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn backup_names() {
+        assert!(validate_backup_name("20261010_094120").is_ok());
+        assert!(validate_backup_name("latest").is_err());
+        assert!(validate_backup_name("2026-10-10").is_err());
+        assert!(validate_backup_name("").is_err());
+    }
 
     #[test]
     fn path_lists() {
