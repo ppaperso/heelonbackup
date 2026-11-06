@@ -358,20 +358,21 @@ heelonbackup verify --deep
 Pour restaurer des fichiers depuis une sauvegarde :
 
 ```bash
-# Simulation (montre ce qui serait restauré sans le faire réellement)
-heelonbackup restore 20261007_143022 /home/user/restaure
+# Simulation : plan affiché, rien n'est écrit
+heelonbackup restore 20261007_143022 --target /home/user/restaure --dry-run
 
-# Restauration réelle
-heelonbackup restore 20261007_143022 /home/user/restaure --execute
+# Restauration réelle sous un dossier cible (sans --dry-run, les fichiers sont écrits)
+heelonbackup restore 20261007_143022 --target /home/user/restaure
 
-# Restaurer uniquement des fichiers spécifiques
-heelonbackup restore 20261007_143022 /home/user/restaure --files "/home/user/Documents/important.pdf"
+# Restaurer uniquement certains chemins d'origine (répétable)
+heelonbackup restore 20261007_143022 --target /home/user/restaure \
+  --path /home/user/Documents --path /home/user/Pictures
 
-# Restaurer les fichiers correspondant à un motif
-heelonbackup restore 20261007_143022 /home/user/restaure --pattern "*.pdf"
+# Écraser les fichiers existants différents, et lister l'action prévue par fichier
+heelonbackup restore 20261007_143022 --target /home/user/restaure --overwrite --list
 ```
 
-Remplacez `20261007_143022` par le nom de votre sauvegarde (horodatage).
+Remplacez `20261007_143022` par le nom de votre sauvegarde (horodatage). Sans `--target`, les fichiers sont restaurés à leurs emplacements absolus d'origine. Dans la console interactive (`heelonbackup` sans sous-commande), un dry-run est toujours affiché d'abord et une confirmation explicite est requise avant toute écriture.
 
 ## 🖥️ Mode Interactif
 

@@ -236,17 +236,17 @@ heelonbackup verify --deep
 ### 🔄 Restore
 
 ```bash
-# Restore files (dry run by default)
-heelonbackup restore 20261007_143022 /home/user/restored
+# Dry run: plan only, nothing is written
+heelonbackup restore 20261007_143022 --target /home/user/restored --dry-run
 
-# Restore with actual execution
-heelonbackup restore 20261007_143022 /home/user/restored --execute
+# Actual restore under a target folder (without --dry-run, files are written)
+heelonbackup restore 20261007_143022 --target /home/user/restored
 
-# Restore specific files
-heelonbackup restore 20261007_143022 /home/user/restored --files "/home/user/Documents/important.txt"
+# Restore only specific original paths (repeatable)
+heelonbackup restore 20261007_143022 --target /home/user/restored --path /home/user/Documents
 
-# Restore with filters
-heelonbackup restore 20261007_143022 /home/user/restored --pattern "*.pdf"
+# Overwrite differing files / list every planned action
+heelonbackup restore 20261007_143022 --target /home/user/restored --overwrite --list
 ```
 
 ### ⚙️ Configuration

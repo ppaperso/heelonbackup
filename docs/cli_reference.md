@@ -241,60 +241,60 @@ heelonbackup verify 20261007_143022 --deep
 
 ## restore
 
-Restore files from a backup (use `--dry-run` to only check what would happen).
+Restore files from a backup stored on the NAS.
 
 ### Usage
 
 ```bash
-heelonbackup restore [OPTIONS] BACKUP DESTINATION
+heelonbackup restore [OPTIONS] [BACKUP]
 ```
 
 ### Arguments
 
 | Argument | Type | Required | Description |
 |----------|------|----------|-------------|
-| `BACKUP` | STRING | Yes | Backup name (YYYYMMDD_HHMMSS) |
-| `DESTINATION` | PATH | Yes | Local directory to restore files to |
+| `BACKUP` | STRING | No | Backup name (YYYYMMDD_HHMMSS). Default: the latest usable backup |
 
 ### Options
 
 | Option | Short | Type | Description | Default |
 |--------|-------|------|-------------|---------|
-| `--execute` | `-e` | flag | Actually restore files (without this, it's a dry run) | false |
-| `--files` | `-f` | PATH | Specific files to restore (absolute paths). Can be specified multiple times. | N/A |
-| `--pattern` | `-p` | PATTERN | Restore files matching this pattern (glob syntax) | N/A |
-| `--dry-run` | `-n` | flag | Show what would be restored without actually doing it | false |
+| `--target` | `-t` | DIR | Restore under this folder instead of the original locations | original locations |
+| `--path` | `-p` | PATH | Only restore this file/folder (original absolute path; repeatable) | everything in the backup |
+| `--dry-run` | `-n` | flag | Check everything (NAS content, conflicts, free space, permissions) and print the plan without writing anything | false |
+| `--overwrite` | | flag | Replace existing files that differ from the backup (otherwise they are kept as conflicts) | false |
+| `--list` | `-l` | flag | Print the action planned for every file | false |
+
+### Semantics
+
+- There is **no `--execute` flag**: without `--dry-run` the restore is **executed** (files are written). `--dry-run` only prints the plan and a verdict (exit 0 = would succeed, 2 = partial, 1 = would fail) and writes nothing.
+- Without `--target`, files are restored to their **original absolute locations** — use `--target` for tests.
+- The interactive console (`heelonbackup` without subcommand) always runs a dry run first and requires an explicit confirmation before any write.
 
 ### Examples
 
 ```bash
-# Dry run to see what would be restored
-heelonbackup restore 20261007_143022 /home/user/restored
+# Dry run: plan of restoring backup 20261007_143022 under /home/user/restored
+heelonbackup restore 20261007_143022 --target /home/user/restored --dry-run
 
-# Actually restore files
-heelonbackup restore 20261007_143022 /home/user/restored --execute
+# Real restore under a target folder
+heelonbackup restore 20261007_143022 --target /home/user/restored
 
-# Restore specific files
-heelonbackup restore 20261007_143022 /home/user/restored \
-  --files "/home/user/Documents/important.pdf" \
-  --files "/home/user/Pictures/vacation.jpg"
+# Only some original paths (repeatable), overwriting differing files, listing every action
+heelonbackup restore 20261007_143022 --target /home/user/restored \
+  --path /home/user/Documents --path /home/user/Pictures \
+  --overwrite --list
 
-# Restore files matching a pattern
-heelonbackup restore 20261007_143022 /home/user/restored \
-  --pattern "*.pdf"
-
-# Restore with dry run
-heelonbackup restore 20261007_143022 /home/user/restored \
-  --dry-run
+# Dry run of the latest usable backup, restored to the original locations
+heelonbackup restore --dry-run
 ```
 
 ### Restore Behavior
 
-- By default, restore is a dry run (no files are actually restored)
-- Use `--execute` to actually restore files
-- Files are restored to their original paths relative to the destination
-- Original file permissions are preserved when possible
-- Existing files are not overwritten by default (this may change in future versions)
+- SHA-256 checksums of downloaded files are verified before they are moved into place
+- Original permissions and modification times are restored (setuid/setgid bits are never restored)
+- Each file is restored atomically (temporary `.part` file, then rename)
+- Existing differing files are kept unless `--overwrite` is given
 
 ---
 

@@ -358,20 +358,21 @@ heelonbackup verify --deep
 To restore files from a backup:
 
 ```bash
-# Dry run (shows what would be restored without actually doing it)
-heelonbackup restore 20261007_143022 /home/user/restored
+# Dry run: plan only, nothing is written
+heelonbackup restore 20261007_143022 --target /home/user/restored --dry-run
 
-# Actual restore
-heelonbackup restore 20261007_143022 /home/user/restored --execute
+# Actual restore under a target folder (without --dry-run, files are written)
+heelonbackup restore 20261007_143022 --target /home/user/restored
 
-# Restore specific files only
-heelonbackup restore 20261007_143022 /home/user/restored --files "/home/user/Documents/important.pdf"
+# Restore only specific original paths (repeatable)
+heelonbackup restore 20261007_143022 --target /home/user/restored \
+  --path /home/user/Documents --path /home/user/Pictures
 
-# Restore files matching a pattern
-heelonbackup restore 20261007_143022 /home/user/restored --pattern "*.pdf"
+# Replace existing files that differ, and list the planned action per file
+heelonbackup restore 20261007_143022 --target /home/user/restored --overwrite --list
 ```
 
-Replace `20261007_143022` with your backup name (timestamp).
+Replace `20261007_143022` with your backup name (timestamp). Without `--target`, files are restored to their original absolute locations. In the interactive console (`heelonbackup` without subcommand), a dry run is always shown first and an explicit confirmation is required before any write.
 
 ## 🖥️ Interactive Mode
 
