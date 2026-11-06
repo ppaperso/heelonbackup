@@ -84,6 +84,7 @@ pub(crate) struct Strings {
     pub keys_idle: &'static str,
     pub keys_busy: &'static str,
     pub keys_prompt: &'static str,
+    pub keep_all: &'static str,
     pub running: &'static str,
     pub busy_refused: &'static str,
     pub interrupt_requested: &'static str,
@@ -109,7 +110,7 @@ pub(crate) struct Strings {
     pub status_prompt: &'static str,
     pub status_options: [&'static str; 3],
     pub config_prompt: &'static str,
-    pub config_options: [&'static str; 4],
+    pub config_options: [&'static str; 5],
     pub yes: &'static str,
     pub no: &'static str,
     pub backup_source_prompt: &'static str,
@@ -198,6 +199,7 @@ pub(crate) static EN: Strings = Strings {
     keys_idle: "↑↓ choose · Enter run · letter = shortcut · L language · PgUp/PgDn scroll · q quit",
     keys_busy: "Ctrl-C interrupt · PgUp/PgDn scroll",
     keys_prompt: "↑↓ choose · Enter confirm · Esc cancel",
+    keep_all: "keep all",
     running: "Running:",
     busy_refused: "An operation is already running (Ctrl-C to interrupt it).",
     interrupt_requested: "Interruption requested: stopping the transfer…",
@@ -227,6 +229,7 @@ pub(crate) static EN: Strings = Strings {
     config_prompt: "Configuration: what do you want to do?",
     config_options: [
         "Show the configuration",
+        "Show the sources and exclusions",
         "Validate the configuration (check)",
         "Configuration file path",
         "Open in $EDITOR",
@@ -287,6 +290,7 @@ pub(crate) static FR: Strings = Strings {
     keys_idle: "↑↓ choisir · Entrée lancer · lettre = raccourci · L langue · PgPréc/PgSuiv défiler · q quitter",
     keys_busy: "Ctrl-C interrompre · PgPréc/PgSuiv défiler",
     keys_prompt: "↑↓ choisir · Entrée valider · Échap annuler",
+    keep_all: "tout garder",
     running: "En cours :",
     busy_refused: "Une opération est déjà en cours (Ctrl-C pour l'interrompre).",
     interrupt_requested: "Interruption demandée : arrêt du transfert…",
@@ -316,6 +320,7 @@ pub(crate) static FR: Strings = Strings {
     config_prompt: "Configuration : que voulez-vous faire ?",
     config_options: [
         "Voir la configuration",
+        "Voir les sources et exclusions",
         "Valider la configuration (check)",
         "Chemin du fichier de configuration",
         "Ouvrir dans $EDITOR",
@@ -360,7 +365,7 @@ mod tests {
             let s = lang.strings();
             assert_eq!(s.lang, lang);
             assert_eq!(s.status_options.len(), 3);
-            assert_eq!(s.config_options.len(), 4);
+            assert_eq!(s.config_options.len(), 5);
             assert_eq!(s.backup_source_options.len(), 2);
             assert_ne!(s.yes, s.no);
         }

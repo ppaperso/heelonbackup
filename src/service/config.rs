@@ -20,6 +20,8 @@ pub enum Action {
     Edit,
     /// Validate the configuration file and resolve the configured sources (no network access)
     Check,
+    /// List the configured sources (found on disk or missing) and the exclude patterns
+    Sources,
     /// Print the path of the configuration file
     Path,
 }
@@ -35,6 +37,7 @@ pub fn run(path: &Path, action: Option<Action>) -> Result<Exit> {
         Action::Show => show(path),
         Action::Edit => edit(path),
         Action::Check => check(path),
+        Action::Sources => sources(path),
         Action::Path => {
             print_config_path(path);
             Ok(Exit::Success)
@@ -57,6 +60,53 @@ fn check(path: &Path) -> Result<Exit> {
         print_check_missing(&missing);
         Ok(Exit::Failure)
     }
+}
+
+/// List the configured sources: success when they all exist, warnings otherwise
+fn sources(path: &Path) -> Result<Exit> {
+    let config = Config::load(path)?;
+    Ok(if print_sources(&config, true) {
+        Exit::Success
+    } else {
+        Exit::Warnings
+    })
+}
+
+/// Print every configured source (✓ found on disk, ✗ missing) and the exclude
+/// patterns (or only their count, so a long exclude list does not hide the
+/// sources); returns true when all the sources exist. Shared with the console
+/// backup flow, so the user sees what "configured sources" means before choosing.
+pub(crate) fn print_sources(config: &Config, list_excludes: bool) -> bool {
+    let sources = &config.backup.sources;
+    ui::say!("📁 Configured sources ({})", sources.len());
+    let mut all_found = true;
+    for source in sources {
+        match expand_tilde(source).canonicalize() {
+            Ok(p) if p.as_os_str() == source.as_str() => ui::say!("    ✓ {source}"),
+            Ok(p) => ui::say!("    ✓ {source}  →  {}", p.display()),
+            Err(_) => {
+                all_found = false;
+                ui::say!("    ✗ {source}  (not found: it will be skipped)");
+            }
+        }
+    }
+    if sources.is_empty() {
+        all_found = false;
+        ui::say!("    (none: set backup.sources in the configuration)");
+    }
+    let excludes = &config.backup.excludes;
+    if list_excludes {
+        ui::say!("🚫 Exclude patterns ({})", excludes.len());
+        for pattern in excludes {
+            ui::say!("    • {pattern}");
+        }
+    } else {
+        ui::say!(
+            "🚫 {} exclude pattern(s) apply (list: `heelonbackup config sources`)",
+            excludes.len()
+        );
+    }
+    all_found
 }
 
 /// Resolve the configured backup sources: (existing canonical paths, missing source strings)

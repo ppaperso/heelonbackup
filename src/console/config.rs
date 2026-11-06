@@ -1,4 +1,4 @@
-//! Console flow: configuration (show / check / path / edit)
+//! Console flow: configuration (show / sources / check / path / edit)
 
 use super::{Strings, select};
 use crate::error::Result;
@@ -10,8 +10,9 @@ use std::path::Path;
 fn config_action(index: usize) -> service::config::Action {
     match index {
         0 => service::config::Action::Show,
-        1 => service::config::Action::Check,
-        2 => service::config::Action::Path,
+        1 => service::config::Action::Sources,
+        2 => service::config::Action::Check,
+        3 => service::config::Action::Path,
         _ => service::config::Action::Edit,
     }
 }
@@ -38,9 +39,10 @@ mod tests {
     #[test]
     fn config_action_mapping() {
         assert_eq!(config_action(0), service::config::Action::Show);
-        assert_eq!(config_action(1), service::config::Action::Check);
-        assert_eq!(config_action(2), service::config::Action::Path);
-        assert_eq!(config_action(3), service::config::Action::Edit);
+        assert_eq!(config_action(1), service::config::Action::Sources);
+        assert_eq!(config_action(2), service::config::Action::Check);
+        assert_eq!(config_action(3), service::config::Action::Path);
+        assert_eq!(config_action(4), service::config::Action::Edit);
         assert_eq!(config_action(99), service::config::Action::Edit);
     }
 }

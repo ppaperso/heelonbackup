@@ -27,7 +27,7 @@ pub(crate) fn draw(frame: &mut Frame, app: &App) {
     let s = app.strings();
     let [header, panels, body, footer] = Layout::vertical([
         Constraint::Length(1),
-        Constraint::Length(7),
+        Constraint::Length(8),
         Constraint::Min(8),
         Constraint::Length(1),
     ])
@@ -138,15 +138,18 @@ fn draw_nas(frame: &mut Frame, area: Rect, app: &App, s: &Strings) {
         if let Ok(base) = config.remote_base() {
             lines.push(field(s.field_folder, base));
         }
+        // the sources themselves (the line is cut at the panel edge; full list via
+        // Configuration › sources, or at the start of a backup)
+        let sources = &config.backup.sources;
         lines.push(field(
             s.field_sources,
-            format!(
-                "{} · {} {}",
-                config.backup.sources.len(),
-                s.field_retention.to_lowercase(),
-                config.storage.retention
-            ),
+            format!("({}) {}", sources.len(), sources.join(", ")),
         ));
+        let retention = match config.storage.retention {
+            0 => s.keep_all.to_string(),
+            n => n.to_string(),
+        };
+        lines.push(field(s.field_retention, retention));
         lines.push(field(s.field_encryption, on_off(config.smb.encrypt)));
     }
     frame.render_widget(Paragraph::new(lines).block(panel(s.panel_nas)), area);
