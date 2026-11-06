@@ -314,7 +314,7 @@ heelonbackup config [OPTIONS] [ACTION]
 |--------|-------------|
 | `init` | Create default configuration if it doesn't exist |
 | `edit` | Edit the configuration file with default editor |
-| `check` | Validate the configuration file |
+| `check` | Validate the configuration file and resolve the configured sources (they must exist on disk); prints a summary and a final verdict. Exit 0 (`✅`) when valid, 1 with the error otherwise. No network access — use `list` to test the NAS connection |
 | `show` | Show the current configuration |
 
 ### Options

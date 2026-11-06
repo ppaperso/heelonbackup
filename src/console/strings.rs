@@ -59,7 +59,7 @@ pub(crate) struct Strings {
     pub status_prompt: &'static str,
     pub status_options: [&'static str; 3],
     pub config_prompt: &'static str,
-    pub config_options: [&'static str; 3],
+    pub config_options: [&'static str; 4],
     pub yes: &'static str,
     pub no: &'static str,
     pub backup_source_prompt: &'static str,
@@ -99,6 +99,7 @@ pub(crate) static EN: Strings = Strings {
     config_prompt: "Configuration: what do you want to do?",
     config_options: [
         "Show the configuration",
+        "Validate the configuration (check)",
         "Configuration file path",
         "Open in $EDITOR",
     ],
@@ -141,6 +142,7 @@ pub(crate) static FR: Strings = Strings {
     config_prompt: "Configuration : que voulez-vous faire ?",
     config_options: [
         "Voir la configuration",
+        "Valider la configuration (check)",
         "Chemin du fichier de configuration",
         "Ouvrir dans $EDITOR",
     ],
@@ -183,7 +185,7 @@ mod tests {
         for s in [Lang::En.strings(), Lang::Fr.strings()] {
             assert!(!s.menu_prompt.is_empty());
             assert_eq!(s.status_options.len(), 3);
-            assert_eq!(s.config_options.len(), 3);
+            assert_eq!(s.config_options.len(), 4);
             assert_eq!(s.backup_source_options.len(), 2);
             assert_ne!(s.yes, s.no);
         }

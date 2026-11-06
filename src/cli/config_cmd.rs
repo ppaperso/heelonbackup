@@ -17,6 +17,8 @@ pub enum ConfigAction {
     Show,
     /// Open the configuration in $VISUAL / $EDITOR, then validate it
     Edit,
+    /// Validate the configuration file and resolve the configured sources (no network access)
+    Check,
     /// Print the path of the configuration file
     Path,
 }
@@ -27,6 +29,7 @@ impl From<ConfigAction> for service::config::Action {
             ConfigAction::Init { force } => Self::Init { force },
             ConfigAction::Show => Self::Show,
             ConfigAction::Edit => Self::Edit,
+            ConfigAction::Check => Self::Check,
             ConfigAction::Path => Self::Path,
         }
     }
