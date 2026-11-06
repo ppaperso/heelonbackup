@@ -8,11 +8,12 @@ This document provides a complete reference for all HeelonBackup command-line op
 2. [backup](#backup)
 3. [status](#status)
 4. [list](#list)
-5. [verify](#verify)
-6. [restore](#restore)
-7. [config](#config)
-8. [completions](#completions)
-9. [Interactive Mode (no subcommand)](#interactive-mode-no-subcommand)
+5. [ping](#ping)
+6. [verify](#verify)
+7. [restore](#restore)
+8. [config](#config)
+9. [completions](#completions)
+10. [Interactive Mode (no subcommand)](#interactive-mode-no-subcommand)
 
 ## Global Options
 
@@ -184,6 +185,31 @@ heelonbackup/20261007_143022  ✅ completed     45.67 GB  12487 files  2026-10-0
 heelonbackup/20261006_180000  ✅ completed     45.23 GB  12345 files  2026-10-06 18:00:00
 heelonbackup/20261005_101530  ⚠️  completed w/errors  45.10 GB  12200 files  2026-10-05 10:15:30
 ```
+
+---
+
+## ping
+
+Check that the NAS answers on its SMB port. It only opens a TCP connection (port 445, or the port given in `smb.url`) with a 3-second timeout: no SMB session, **no password needed**. The interactive console uses the same check for its NAS panel.
+
+### Usage
+
+```bash
+heelonbackup ping
+```
+
+### Options
+
+This command has no specific options beyond the global ones.
+
+### Output and exit codes
+
+```
+🟢 NAS online: 192.168.1.100:445 (3 ms)                      # exit code 0
+🔴 NAS offline: 192.168.1.100:445 (no answer within 3s)      # exit code 1
+```
+
+An invalid configuration exits with code 1 and the configuration error.
 
 ---
 
@@ -426,4 +452,4 @@ For configuration file options, see [Configuration Reference](configuration.md).
 
 ## Interactive Mode (no subcommand)
 
-Running `heelonbackup` with **no subcommand** opens the interactive console (menu-driven dialogues, bilingual EN/FR) instead of printing this help. It offers guided flows for backup, status, verify, restore and configuration, using the same engine as the commands documented above. All subcommands remain unchanged and fully supported; see the user guides for the « Interactive Mode » section.
+Running `heelonbackup` with **no subcommand** opens the interactive console instead of printing this help: a full-screen dashboard (bilingual EN/FR) with the version, environment, live date/time, NAS state (same check as `ping`), last backup, and a terminal pane that streams the output and progress of the running operation. It offers guided flows for backup, status, backups on the NAS (`list`), verify, restore and configuration, using the same engine as the commands documented above. It needs a terminal (exit code 1 otherwise); quitting returns exit code 0, and `Ctrl-C` during an operation interrupts it without closing the dashboard. All subcommands remain unchanged and fully supported; see the user guides for the « Interactive Mode » section.

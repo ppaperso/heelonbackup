@@ -198,7 +198,7 @@ HeelonBackup supports the following environment variables:
 
 #### `HEELONBACKUP_SMB_PASSWORD`
 
-In an **interactive terminal**, the SMB password is asked with a **masked prompt** when the NAS connection starts — it is never read from the environment, never stored in the shell history, and never displayed:
+In an **interactive terminal**, the SMB password is asked with a **masked prompt** when the NAS connection starts (the interactive console asks it once per session, in memory only) — it is never read from the environment, never stored in the shell history, and never displayed:
 
 ```bash
 heelonbackup backup   # asks "SMB password for user@nas: " (hidden input)
@@ -337,6 +337,12 @@ heelonbackup list
 
 This shows all backups with their status, size, and timestamp.
 
+To only check that the NAS is reachable (no password needed):
+
+```bash
+heelonbackup ping   # exit code 0 = online, 1 = offline
+```
+
 ### Verifying a Backup
 
 To ensure your backup is complete and intact:
@@ -376,27 +382,47 @@ Replace `20261007_143022` with your backup name (timestamp). Without `--target`,
 
 ## 🖥️ Interactive Mode
 
-Running `heelonbackup` **without a subcommand** opens an interactive console (menu-driven dialogues, no full-screen UI):
+Running `heelonbackup` **without a subcommand** opens the interactive console, a full-screen dashboard:
 
 ```text
-? HeelonBackup — what would you like to do? ›
-❯ Start a backup
-  Status
-  Verify a backup
-  Restore
-  Configuration
-  Langue / Language
-  Quit
+ HeelonBackup v0.1.0   PROD                                    2026-11-06 14:32:05    EN | FR
+╭ NAS ─────────────────────────────────────╮╭ Last backup ───────────────────────────────────╮
+│ ● ONLINE  192.168.1.100:445 · 3 ms       ││ Status       Completed                         │
+│ Share        //192.168.1.100/backup      ││ Date         2026-11-05 22:00 (16 h ago)       │
+│ Folder       laptop/heelonbackup         ││ Size         12.40 GiB · 41238 files           │
+│ Sources      3 · retention 7             ││ Duration     18m 02s                           │
+│ Encryption   on                          ││                                                │
+╰──────────────────────────────────────────╯╰────────────────────────────────────────────────╯
+╭ Actions ──────────────────╮╭ Terminal — ⠹ Running: Start a backup ─────────────────────────╮
+│▶ b Start a backup         ││14:30:04   Files:  41238 (12.40 GiB)                           │
+│  s Status / history       ││14:30:05 Connected to //192.168.1.100/backup                   │
+│  n Backups on the NAS     ││                                                               │
+│  v Verify a backup        ││                                                               │
+│  r Restore                ││                                                               │
+│  c Configuration          ││                                                               │
+│  L Langue / Language      ││ Uploading 48% · 5.95 GiB/12.40 GiB · 85 MiB/s · ETA 1m 17s    │
+│  q Quit                   ││                                                               │
+╰───────────────────────────╯╰───────────────────────────────────────────────────────────────╯
+ Ctrl-C interrupt · PgUp/PgDn scroll
 ```
 
+- **Header**: version, environment (`DEV` in red when `HEELONBACKUP_ENV=dev`, `PROD` otherwise), live date and time, active language.
+- **NAS panel**: `ONLINE` / `OFFLINE` with the response time, checked in the background every 15 seconds and after each operation (a TCP connection to the SMB port: no password needed, same check as `heelonbackup ping`), plus the share, folder, sources, retention and encryption from the configuration.
+- **Last backup panel**: status, date and age, size, file count and duration of the last backup made from this computer; the last successful one if it differs, and a warning when it is more than 7 days old.
+- **Terminal pane**: the output of the running operation, with timestamps, and its live progress (percentage, sizes, rate, ETA). `PgUp` / `PgDn` / `Home` / `End` scroll it.
+- **Actions**: choose with `↑` `↓` + `Enter`, or press the shortcut letter shown in front of each entry.
+
+Actions:
+
 - **Start a backup**: configured sources or specific paths; a **dry run is always proposed first**, and a real transfer only starts after an explicit confirmation.
-- **Status**: last backup summary, detailed view, or full local history (same output as `heelonbackup status`).
+- **Status / history**: last backup summary, detailed view, or full local history (same output as `heelonbackup status`).
+- **Backups on the NAS**: every backup stored on the NAS (same output as `heelonbackup list`).
 - **Verify a backup**: pick a backup on the NAS (or the latest usable one), with optional deep SHA-256 verification.
 - **Restore**: pick a backup, a target folder (empty = original locations) and optional path filters; a dry run is always run first.
-- **Configuration**: show the configuration file, print its path, or open it in `$EDITOR`.
-- **Langue / Language**: switch the console between English and French for the session; the choice is saved in the configuration file (`"language": "en"` or `"fr"`, default `"en"`).
+- **Configuration**: show the configuration file, validate it, print its path, or open it in `$EDITOR` (the dashboard steps aside while the editor runs).
+- **Langue / Language** (`L`): switch the console between English and French; the choice is saved in the configuration file (`"language": "en"` or `"fr"`, default `"en"`). The operation output in the terminal pane stays in English, like the CLI.
 
-Every flow uses the same engine as the CLI commands, so output, progress bars and exit codes are identical. The SMB password is asked with a masked (hidden) prompt and is never stored or displayed; `HEELONBACKUP_SMB_PASSWORD` is only used for non-interactive runs. `Esc` / `q` / `Ctrl-C` leave the current dialogue cleanly; `Ctrl-C` during a transfer interrupts it (exit code 130, like the CLI). Passing any subcommand keeps the classic CLI behavior.
+Every flow uses the same engine as the CLI commands, so the output in the terminal pane is identical to the CLI output. The SMB password is asked **once per console session** in a masked dialog (never displayed), kept in memory only and forgotten when the console closes or when the NAS rejects it; `HEELONBACKUP_SMB_PASSWORD` is only used for non-interactive runs. In a dialog, `Esc` / `Ctrl-C` cancel and go back. While an operation runs, `Ctrl-C` interrupts it and the dashboard stays open; otherwise `q`, `Esc` or `Ctrl-C` quit (exit code 0). Without a terminal, the console refuses to start (exit code 1). Passing any subcommand keeps the classic CLI behavior.
 
 ## 🚀 Advanced Features
 

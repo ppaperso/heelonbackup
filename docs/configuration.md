@@ -80,7 +80,7 @@ smb://server:port/share
 
 ### Authentication
 
-**Recommended (interactive):** in a terminal, the password is asked with a masked prompt when the NAS connection starts — nothing is stored in the shell history, the environment or on disk.
+**Recommended (interactive):** in a terminal, the password is asked with a masked prompt when the NAS connection starts (the interactive console asks it once per session and keeps it in memory only) — nothing is stored in the shell history, the environment or on disk.
 
 **Non-interactive runs only** (scripts, cron, `sudo` without a tty): use the `HEELONBACKUP_SMB_PASSWORD` environment variable (set and not empty):
 

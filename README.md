@@ -150,20 +150,31 @@ export HEELONBACKUP_ENV=dev
 
 ### 🖥️ Interactive Mode
 
-Run `heelonbackup` **without a subcommand** to open the interactive console (bilingual EN/FR, menu-driven):
+Run `heelonbackup` **without a subcommand** to open the interactive console: a full-screen dashboard (bilingual EN/FR) showing the version, environment, live date/time, NAS state (online/offline), the last backup, and a terminal pane that follows the running operation live:
 
 ```text
-? HeelonBackup — what would you like to do? ›
-❯ Start a backup
-  Status
-  Verify a backup
-  Restore
-  Configuration
-  Langue / Language
-  Quit
+ HeelonBackup v0.1.0   PROD                                    2026-11-06 14:32:05    EN | FR
+╭ NAS ─────────────────────────────────────╮╭ Last backup ───────────────────────────────────╮
+│ ● ONLINE  192.168.1.100:445 · 3 ms       ││ Status       Completed                         │
+│ Share        //192.168.1.100/backup      ││ Date         2026-11-05 22:00 (16 h ago)       │
+│ Folder       laptop/heelonbackup         ││ Size         12.40 GiB · 41238 files           │
+│ Sources      3 · retention 7             ││ Duration     18m 02s                           │
+│ Encryption   on                          ││                                                │
+╰──────────────────────────────────────────╯╰────────────────────────────────────────────────╯
+╭ Actions ──────────────────╮╭ Terminal — ⠹ Running: Start a backup ─────────────────────────╮
+│▶ b Start a backup         ││14:30:04   Files:  41238 (12.40 GiB)                           │
+│  s Status / history       ││14:30:05 Connected to //192.168.1.100/backup                   │
+│  n Backups on the NAS     ││                                                               │
+│  v Verify a backup        ││                                                               │
+│  r Restore                ││                                                               │
+│  c Configuration          ││                                                               │
+│  L Langue / Language      ││ Uploading 48% · 5.95 GiB/12.40 GiB · 85 MiB/s · ETA 1m 17s    │
+│  q Quit                   ││                                                               │
+╰───────────────────────────╯╰───────────────────────────────────────────────────────────────╯
+ Ctrl-C interrupt · PgUp/PgDn scroll
 ```
 
-Guided flows: backup (a dry run is always proposed before any real transfer), status, verify, restore (dry run first) and configuration. Every subcommand below keeps the classic CLI behavior. Details in the [user guide](docs/user_guide.md) and [guide utilisateur](docs/user_guide_fr.md).
+Guided flows: backup (a dry run is always proposed before any real transfer), status, backups on the NAS, verify, restore (dry run first) and configuration. Every subcommand below keeps the classic CLI behavior. Details in the [user guide](docs/user_guide.md) and [guide utilisateur](docs/user_guide_fr.md).
 
 ### 💾 Backup
 
@@ -211,6 +222,9 @@ Example output:
 ```bash
 # List all backups on the NAS
 heelonbackup list
+
+# Check that the NAS answers on its SMB port (no password needed; exit 0 online, 1 offline)
+heelonbackup ping
 ```
 
 Example output:
@@ -282,7 +296,7 @@ heelonbackup completions fish > ~/.config/fish/completions/heelonbackup.fish
 
 - **Encryption**: Support for SMB3 traffic encryption
 - **Password Security**: No password storage in logs or command line
-- **Masked password prompt**: in a terminal the SMB password is typed hidden at launch (never stored); `HEELONBACKUP_SMB_PASSWORD` is only for non-interactive runs, and the password is never passed on a command line
+- **Masked password prompt**: in a terminal the SMB password is typed hidden at launch (never stored; the interactive console asks it once per session and keeps it in memory only); `HEELONBACKUP_SMB_PASSWORD` is only for non-interactive runs, and the password is never passed on a command line
 - **Verification**: SHA-256 checksums for every backed up file
 - **Permissions**: Preserves original Unix permissions
 
