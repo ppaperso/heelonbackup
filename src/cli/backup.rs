@@ -26,6 +26,10 @@ pub struct BackupArgs {
     /// Maximum file size in bytes, 0 = unlimited (overrides backup.max_file_size)
     #[arg(long, value_name = "BYTES", value_parser = clap::value_parser!(u64))]
     pub max_file_size: Option<u64>,
+
+    /// Extra exclude pattern (glob), appended to backup.excludes; repeatable
+    #[arg(short = 'e', long, value_name = "PATTERN")]
+    pub exclude: Vec<String>,
 }
 
 impl From<BackupArgs> for service::backup::BackupRequest {
@@ -36,6 +40,7 @@ impl From<BackupArgs> for service::backup::BackupRequest {
             list: args.list,
             workers: args.workers.map(usize::from),
             max_file_size: args.max_file_size,
+            excludes: (!args.exclude.is_empty()).then_some(args.exclude),
         }
     }
 }

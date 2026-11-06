@@ -31,9 +31,13 @@ pub struct BackupRequest {
     pub workers: Option<usize>,
     /// Override `backup.max_file_size` for this run (None = use the configuration)
     pub max_file_size: Option<u64>,
+    /// Extra exclude patterns, APPENDED to `backup.excludes` (None = use the configuration as-is)
+    pub excludes: Option<Vec<String>>,
 }
 
-/// Effective configuration for a run: the request overrides win over the configuration
+/// Effective configuration for a run: the request overrides win over the configuration;
+/// exclude patterns are appended, never replaced (a one-off override must not lose
+/// the permanent exclusions)
 fn effective_config(config: &Config, request: &BackupRequest) -> Config {
     let mut config = config.clone();
     if let Some(workers) = request.workers {
@@ -41,6 +45,9 @@ fn effective_config(config: &Config, request: &BackupRequest) -> Config {
     }
     if let Some(max_file_size) = request.max_file_size {
         config.backup.max_file_size = max_file_size;
+    }
+    if let Some(extra) = &request.excludes {
+        config.backup.excludes.extend(extra.iter().cloned());
     }
     config
 }
@@ -544,6 +551,32 @@ mod tests {
         let effective = effective_config(&config, &BackupRequest::default());
         assert_eq!(effective.backup.workers, 3);
         assert_eq!(effective.backup.max_file_size, 999);
+    }
+
+    #[test]
+    fn request_excludes_are_appended_to_config_not_replaced() {
+        use crate::error::ConfigError;
+        let mut config = Config::default();
+        config.backup.excludes = vec![".cache".to_string()];
+        let request = BackupRequest {
+            excludes: Some(vec!["*.iso".to_string(), "*.tmp".to_string()]),
+            ..Default::default()
+        };
+        let effective = effective_config(&config, &request);
+        assert_eq!(
+            effective.backup.excludes,
+            vec![
+                ".cache".to_string(),
+                "*.iso".to_string(),
+                "*.tmp".to_string()
+            ]
+        );
+        // no override: the configured excludes are kept as-is
+        let effective = effective_config(&config, &BackupRequest::default());
+        assert_eq!(effective.backup.excludes, vec![".cache".to_string()]);
+        // an invalid pattern is rejected by Excludes::new with ConfigError::Invalid
+        let err = Excludes::new(&["[invalid".to_string()]).unwrap_err();
+        assert!(matches!(err, ConfigError::Invalid(_)));
     }
 
     #[test]
